@@ -1,0 +1,146 @@
+// Core 5 prayers + sunrise
+export type PrayerName = 'fajr' | 'sunrise' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+
+// Optional/Sunnah prayers
+export type OptionalPrayerName = 'middleOfNight' | 'lastThirdOfNight' | 'tahajjud';
+
+// All prayer types combined
+export type AllPrayerNames = PrayerName | OptionalPrayerName;
+
+export interface PrayerTime {
+  name: AllPrayerNames;
+  label: string;
+  time: Date;
+  isOptional?: boolean;
+}
+
+export interface SunnahTimesData {
+  middleOfTheNight: Date;
+  lastThirdOfTheNight: Date;
+}
+
+export interface PrayerTimesData {
+  prayers: PrayerTime[];
+  sunnahTimes: SunnahTimesData | null;
+  currentPrayer: PrayerName | null;
+  nextPrayer: PrayerName | null;
+  nextPrayerTime: Date | null;
+}
+
+export type CalculationMethod = 
+  | 'MuslimWorldLeague'
+  | 'Egyptian'
+  | 'Karachi'
+  | 'UmmAlQura'
+  | 'Dubai'
+  | 'MoonsightingCommittee'
+  | 'NorthAmerica' // ISNA
+  | 'Kuwait'
+  | 'Qatar'
+  | 'Singapore'
+  | 'Tehran'
+  | 'Turkey';
+
+export type AsrCalculation = 'Standard' | 'Hanafi';
+
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface LocationData {
+  coordinates: Coordinates;
+  cityName: string;
+  countryCode?: string;
+}
+
+export interface OptionalPrayersSettings {
+  showSunrise: boolean;
+  showMiddleOfNight: boolean;
+  showLastThirdOfNight: boolean;
+}
+
+export type NotificationSound = 'default' | 'adhan' | 'adhan_fajr' | 'silent';
+
+export interface PrayerNotificationSettings {
+  enabled: boolean;
+  reminderMinutes: number; // Minutes before prayer (0 = disabled)
+  atPrayerTime: boolean;   // Notify exactly at prayer time
+  sound: NotificationSound;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  defaultSound: NotificationSound;
+  defaultReminderMinutes: number;
+  prayers: Record<PrayerName, PrayerNotificationSettings>;
+}
+
+export interface JumuahTime {
+  khutbah: string;  // Time string "HH:MM" format
+  iqamah: string;   // Time string "HH:MM" format
+}
+
+export interface JumuahSettings {
+  enabled: boolean;
+  masjidName: string;
+  times: JumuahTime[];  // Some masjids have multiple Jumuah
+  reminderMinutes: number;  // Minutes before khutbah to remind
+}
+
+export interface HomeBaseLocation {
+  coordinates: Coordinates;
+  cityName: string;
+  countryCode?: string;
+}
+
+export interface TravelSettings {
+  enabled: boolean;
+  homeBase: HomeBaseLocation | null;
+  override: 'auto' | 'force_on' | 'force_off';
+  distanceThresholdKm: number;       // default 88.7
+  jamaDhuhrAsr: boolean;              // combine Dhuhr+Asr
+  jamaMaghribIsha: boolean;           // combine Maghrib+Isha
+  maxTravelDays: number;              // 4, 10, 15, or 0=unlimited
+  travelStartDate: string | null;     // ISO date
+}
+
+export interface TravelState {
+  isTraveling: boolean;
+  distanceFromHomeKm: number | null;
+  isAutoDetected: boolean;
+  qasr: { dhuhr: boolean; asr: boolean; isha: boolean };
+  jamaDhuhrAsr: boolean;
+  jamaMaghribIsha: boolean;
+}
+
+export interface DisplaySettings {
+  showCurrentPrayer: boolean;
+  showNextPrayer: boolean;
+  showSunnahCard: boolean;
+}
+
+export interface Settings {
+  calculationMethod: CalculationMethod;
+  asrCalculation: AsrCalculation;
+  optionalPrayers: OptionalPrayersSettings;
+  notifications: NotificationSettings;
+  jumuah: JumuahSettings;
+  travel: TravelSettings;
+  display: DisplaySettings;
+}
+
+export interface CityEntry {
+  n: string;       // city name
+  c: string;       // ISO country code
+  a: string;       // admin/state/region
+  lat: number;     // latitude
+  lng: number;     // longitude
+  p: number;       // population
+}
+
+export interface NotificationPreference {
+  prayer: PrayerName;
+  enabled: boolean;
+  minutesBefore: number;
+}

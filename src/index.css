@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  /* Light mode colors - higher contrast */
+  --color-background: #F5F6F8;
+  --color-card: #FFFFFF;
+  --color-primary: #4361EE;
+  --color-text: #111318;
+  --color-muted: #5C6370;
+  --color-border: #E2E5EB;
+  
+  /* Highlighted row (dark navy) */
+  --color-highlight: #1A1F36;
+  --color-highlight-text: #FFFFFF;
+}
+
+/* Dark mode overrides - higher contrast */
+.dark {
+  --color-background: #0A0C10;
+  --color-card: #16181D;
+  --color-primary: #6B8AFF;
+  --color-text: #F5F6F8;
+  --color-muted: #9CA3AF;
+  --color-border: #2A2E38;
+  
+  --color-highlight: #2A3050;
+  --color-highlight-text: #FFFFFF;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Ubuntu', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 16px;
+}
+
+/* Safe area insets for notched devices */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
