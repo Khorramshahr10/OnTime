@@ -111,7 +111,7 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
               {stats && (
                 <div className="mb-8">
                   {/* Main Score Card */}
-                  <div className="p-5 rounded-2xl bg-[var(--color-card)] ring-1 ring-[var(--color-border)] mb-4">
+                  <div className="p-5 rounded-lg bg-[var(--color-card)] ring-1 ring-[var(--color-border)] mb-4">
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <p className="text-base font-medium text-[var(--color-muted)]">Weekly Score</p>
@@ -139,7 +139,7 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
 
                   {/* Stat Pills */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="flex items-center gap-4 p-4 rounded-xl bg-[var(--color-card)] ring-1 ring-[var(--color-border)]">
+                    <div className="flex items-center gap-4 p-4 rounded-lg bg-[var(--color-card)] ring-1 ring-[var(--color-border)]">
                       <div className="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                         <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -151,7 +151,7 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-4 p-4 rounded-xl bg-[var(--color-card)] ring-1 ring-[var(--color-border)]">
+                    <div className="flex items-center gap-4 p-4 rounded-lg bg-[var(--color-card)] ring-1 ring-[var(--color-border)]">
                       <div className="w-12 h-12 rounded-lg bg-red-500/10 flex items-center justify-center">
                         <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -169,7 +169,7 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
               {/* Activity List */}
               <div className="mb-6 space-y-3">
                 {records.map((record) => (
-                  <div key={record.date} className="rounded-xl bg-[var(--color-card)] ring-1 ring-[var(--color-border)] p-4">
+                  <div key={record.date} className="rounded-lg bg-[var(--color-card)] ring-1 ring-[var(--color-border)] p-4">
                     <p className="text-sm font-medium text-[var(--color-text)] mb-3">
                       {formatDate(record.date)}
                     </p>
@@ -220,7 +220,7 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
               </div>
 
               {/* Info Card */}
-              <div className="flex items-start gap-4 p-4 rounded-xl bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]/10">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]/10">
                 <div className="shrink-0 w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center">
                   <svg className="w-5 h-5 text-[var(--color-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />

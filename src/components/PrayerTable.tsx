@@ -215,7 +215,7 @@ export function PrayerTable({ prayers, currentPrayer }: PrayerTableProps) {
   };
 
   return (
-    <div className={`bg-[var(--color-card)] p-3 ${travelState.isTraveling ? 'rounded-b-3xl' : 'rounded-3xl shadow-sm'}`}>
+    <div className={`bg-[var(--color-card)] p-3 border border-[var(--color-border)] ${travelState.isTraveling ? 'rounded-b-lg' : 'rounded-lg'}`}>
       {/* Prayer Rows */}
       <div className="flex flex-col gap-1.5">
         {renderPrayers()}
@@ -278,14 +278,14 @@ function JamaPrayerRow({ prayer, pairPrayer, isHighlighted, highlightGradient, t
   return (
     <div
       className={`
-        relative flex items-center justify-between px-3 py-3 rounded-2xl transition-all duration-300
-        ${isHighlighted ? 'shadow-lg scale-[1.02]' : ''}
+        relative flex items-center justify-between px-3 py-3 rounded-lg transition-all duration-300
+        ${isHighlighted ? 'scale-[1.02]' : ''}
       `}
       style={isHighlighted ? { background: highlightGradient } : undefined}
     >
       {isHighlighted && (
         <div
-          className="absolute inset-0 rounded-2xl opacity-20 pointer-events-none"
+          className="absolute inset-0 rounded-lg opacity-20 pointer-events-none"
           style={{
             background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%, rgba(255,255,255,0.1) 100%)',
           }}
@@ -295,7 +295,7 @@ function JamaPrayerRow({ prayer, pairPrayer, isHighlighted, highlightGradient, t
       <div
         onClick={handleNameTap}
         className={`
-          flex items-center gap-1.5 relative z-10 flex-wrap cursor-pointer py-1 pr-2 -ml-1 pl-1 rounded-xl transition-colors
+          flex items-center gap-1.5 relative z-10 flex-wrap cursor-pointer py-1 pr-2 -ml-1 pl-1 rounded-lg transition-colors
           ${!isHighlighted ? 'hover:bg-[var(--color-background)] active:scale-[0.98]' : 'hover:bg-white/10'}
         `}
       >
@@ -473,15 +473,15 @@ function PrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, onTap, o
   return (
     <div
       className={`
-        relative flex items-center justify-between px-3 py-3 rounded-2xl transition-all duration-300
-        ${isHighlighted ? 'shadow-lg scale-[1.02]' : ''}
+        relative flex items-center justify-between px-3 py-3 rounded-lg transition-all duration-300
+        ${isHighlighted ? 'scale-[1.02]' : ''}
       `}
       style={isHighlighted ? { background: gradient } : undefined}
     >
       {/* Subtle shine overlay for highlighted row */}
       {isHighlighted && (
         <div 
-          className="absolute inset-0 rounded-2xl opacity-20 pointer-events-none"
+          className="absolute inset-0 rounded-lg opacity-20 pointer-events-none"
           style={{
             background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%, rgba(255,255,255,0.1) 100%)',
           }}
@@ -492,7 +492,7 @@ function PrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, onTap, o
       <div 
         onClick={handleNameTap}
         className={`
-          flex items-center gap-2 relative z-10 cursor-pointer py-1 pr-2 -ml-1 pl-1 rounded-xl transition-colors
+          flex items-center gap-2 relative z-10 cursor-pointer py-1 pr-2 -ml-1 pl-1 rounded-lg transition-colors
           ${!isHighlighted ? 'hover:bg-[var(--color-background)] active:scale-[0.98]' : 'hover:bg-white/10'}
         `}
       >
@@ -549,7 +549,7 @@ function PrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, onTap, o
           <div
             onClick={handleTimeTap}
             className={`
-              cursor-pointer py-1 px-2 -mr-1 rounded-xl transition-colors
+              cursor-pointer py-1 px-2 -mr-1 rounded-lg transition-colors
               ${!isHighlighted ? 'hover:bg-[var(--color-background)] active:scale-[0.98]' : 'hover:bg-white/10'}
             `}
           >

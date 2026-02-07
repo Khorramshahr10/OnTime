@@ -99,7 +99,7 @@ export function CountdownTimer({ currentPrayer, nextPrayer, nextPrayerTime, hour
     <div className="space-y-3">
       {/* Current Prayer Card */}
       {display.showCurrentPrayer && currentPrayer && currentPrayer !== 'sunrise' && (
-        <div className="bg-[var(--color-card)] rounded-2xl p-3 shadow-sm">
+        <div className="bg-[var(--color-card)] rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide mb-0.5">
@@ -132,7 +132,7 @@ export function CountdownTimer({ currentPrayer, nextPrayer, nextPrayerTime, hour
 
       {/* Sunnah Prayers Card */}
       {display.showSunnahCard && regularPrayers.length > 0 && (
-        <div className="bg-[var(--color-card)] rounded-2xl p-3 shadow-sm">
+        <div className="bg-[var(--color-card)] rounded-lg p-3 border border-[var(--color-border)]">
           <div className="space-y-1.5">
             {regularPrayers.map((prayer, idx) => (
               <div key={idx} className="flex items-center justify-between">
@@ -155,7 +155,7 @@ export function CountdownTimer({ currentPrayer, nextPrayer, nextPrayerTime, hour
 
       {/* Next Prayer Countdown Card */}
       {display.showNextPrayer && nextPrayer && (
-        <div className="bg-[var(--color-card)] rounded-2xl p-3 shadow-sm">
+        <div className="bg-[var(--color-card)] rounded-lg p-3 border border-[var(--color-border)]">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide mb-0.5">
@@ -184,7 +184,7 @@ export function CountdownTimer({ currentPrayer, nextPrayer, nextPrayerTime, hour
 
       {/* Ishraq/Duha Card */}
       {display.showSunnahCard && naflPrayer && (
-        <div className="bg-[var(--color-card)] rounded-2xl p-3 shadow-sm">
+        <div className="bg-[var(--color-card)] rounded-lg p-3 border border-[var(--color-border)]">
           <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide mb-2">
             Optional Prayer
           </p>
@@ -201,7 +201,7 @@ export function CountdownTimer({ currentPrayer, nextPrayer, nextPrayerTime, hour
 
       {/* If no next prayer and no prayable prayers, show current time label */}
       {!nextPrayer && prayablePrayers.length === 0 && currentPrayer && (
-        <div className="bg-[var(--color-card)] rounded-2xl p-3 shadow-sm text-center">
+        <div className="bg-[var(--color-card)] rounded-lg p-3 border border-[var(--color-border)] text-center">
           <p className="text-sm text-[var(--color-muted)]">
             {currentLabel} time
           </p>

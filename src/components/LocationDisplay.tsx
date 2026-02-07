@@ -53,7 +53,7 @@ export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
           onClick={() => setShowMap(false)}
         >
           <div
-            className="w-[90%] max-w-md bg-[var(--color-card)] rounded-2xl overflow-hidden shadow-xl"
+            className="w-[90%] max-w-md bg-[var(--color-card)] rounded-lg overflow-hidden border border-[var(--color-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -87,7 +87,7 @@ export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
             <div className="px-4 py-3">
               <button
                 onClick={handleOpenInMaps}
-                className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium text-sm hover:opacity-90 transition-opacity"
+                className="w-full py-2.5 rounded-lg bg-[var(--color-primary)] text-white font-medium text-sm hover:opacity-90 transition-opacity"
               >
                 Open in Maps
               </button>

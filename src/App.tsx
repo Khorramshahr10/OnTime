@@ -70,10 +70,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] safe-area-top safe-area-bottom">
-      <div className="max-w-lg mx-auto px-4 py-6">
-        {/* Top Bar */}
-        <header className="flex items-center justify-between mb-5">
+    <div className="min-h-screen bg-[var(--color-background)] safe-area-bottom flex flex-col">
+      <div className="max-w-lg mx-auto w-full flex flex-col flex-1">
+        {/* Top Bar - sticky below status bar */}
+        <header className="sticky top-0 z-40 safe-area-top bg-[var(--color-background)] px-4 pt-2 pb-3 flex items-center justify-between">
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 -ml-2 rounded-full hover:bg-[var(--color-card)] transition-colors"
@@ -110,6 +110,9 @@ function App() {
           </div>
         </header>
 
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-4 pb-6">
+
         {/* Current Prayer & Countdown */}
         {(currentPrayer || nextPrayer) && (
           <div className="mb-5">
@@ -128,7 +131,7 @@ function App() {
         )}
 
         {/* Travel Banner + Prayer Table */}
-        <div className={`mb-5 ${travelState.isTraveling ? 'rounded-3xl border-2 border-amber-500/30 overflow-hidden bg-[var(--color-card)]' : ''}`}>
+        <div className={`mb-5 ${travelState.isTraveling ? 'rounded-lg border-2 border-amber-500/30 overflow-hidden bg-[var(--color-card)]' : ''}`}>
           {travelState.isTraveling && (
             <div className="px-4 py-3 bg-amber-500/10">
               <div className="flex items-center gap-2">
@@ -148,6 +151,7 @@ function App() {
           />
         </div>
 
+        </div>
       </div>
 
       {/* Modals */}

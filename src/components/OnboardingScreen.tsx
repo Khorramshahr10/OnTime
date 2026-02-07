@@ -88,7 +88,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </p>
             <button
               onClick={() => setStep('notifications')}
-              className="w-full py-3.5 bg-[var(--color-primary)] text-white font-semibold rounded-xl text-lg"
+              className="w-full py-3.5 bg-[var(--color-primary)] text-white font-semibold rounded-lg text-lg"
             >
               Get Started
             </button>
@@ -97,7 +97,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
         {step === 'notifications' && (
           <div className="animate-fade-in">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-[var(--color-primary)]/10 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center">
               <svg className="w-8 h-8 text-[var(--color-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
               </svg>
@@ -108,7 +108,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </p>
             <button
               onClick={handleNotificationPermission}
-              className="w-full py-3.5 bg-[var(--color-primary)] text-white font-semibold rounded-xl text-lg mb-3"
+              className="w-full py-3.5 bg-[var(--color-primary)] text-white font-semibold rounded-lg text-lg mb-3"
             >
               Enable Notifications
             </button>
@@ -123,7 +123,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
         {step === 'location' && (
           <div className="animate-fade-in">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-lg bg-blue-500/10 flex items-center justify-center">
               <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
@@ -135,7 +135,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </p>
             <button
               onClick={handleLocationPermission}
-              className="w-full py-3.5 bg-blue-500 text-white font-semibold rounded-xl text-lg mb-3"
+              className="w-full py-3.5 bg-blue-500 text-white font-semibold rounded-lg text-lg mb-3"
             >
               Enable Location
             </button>
@@ -152,7 +152,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           <div className="animate-fade-in">
             {locationStatus === 'Location found!' ? (
               <>
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-green-500/10 flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-lg bg-green-500/10 flex items-center justify-center">
                   <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
@@ -162,7 +162,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               </>
             ) : locationStatus?.includes('denied') || locationStatus?.includes('Could not') ? (
               <>
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-lg bg-amber-500/10 flex items-center justify-center">
                   <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
@@ -172,7 +172,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               </>
             ) : (
               <>
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-lg bg-blue-500/10 flex items-center justify-center">
                   <div className="w-8 h-8 border-[3px] border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
                 </div>
                 <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">Finding You</h2>
@@ -187,7 +187,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                 {elapsed >= 20 && (
                   <button
                     onClick={skipLocation}
-                    className="mt-6 w-full py-3 text-[var(--color-muted)] font-medium text-sm border border-[var(--color-border)] rounded-xl"
+                    className="mt-6 w-full py-3 text-[var(--color-muted)] font-medium text-sm border border-[var(--color-border)] rounded-lg"
                   >
                     Continue without GPS — I'll set it later
                   </button>

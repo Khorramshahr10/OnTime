@@ -56,7 +56,7 @@ export function QiblaCompass({ isOpen, onClose }: QiblaCompassProps) {
 
         {/* Qibla info card */}
         <div className="flex-shrink-0 px-4 pb-3">
-          <div className="bg-[var(--color-card)] rounded-xl p-4">
+          <div className="bg-[var(--color-card)] rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-[var(--color-muted)]">From {location.cityName || 'your location'}</p>
@@ -74,7 +74,7 @@ export function QiblaCompass({ isOpen, onClose }: QiblaCompassProps) {
 
         {/* Map with arrow overlay */}
         <div className="flex-1 px-4 pb-4">
-          <div className="relative w-full h-full rounded-xl overflow-hidden border border-[var(--color-border)]">
+          <div className="relative w-full h-full rounded-lg overflow-hidden border border-[var(--color-border)]">
             <iframe
               src={mapSrc}
               className="w-full h-full border-0"

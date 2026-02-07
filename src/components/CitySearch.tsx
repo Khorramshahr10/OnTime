@@ -102,7 +102,7 @@ export function CitySearch({ onSelect }: CitySearchProps) {
           placeholder="Search for a city..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 rounded-xl bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+          className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
         />
         {query && (
           <button
@@ -140,7 +140,7 @@ export function CitySearch({ onSelect }: CitySearchProps) {
             <button
               key={`${city.c}-${city.n}-${city.a}-${i}`}
               onClick={() => onSelect(city)}
-              className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--color-card)] active:bg-[var(--color-border)] transition-colors text-left w-full"
+              className="flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--color-card)] active:bg-[var(--color-border)] transition-colors text-left w-full"
             >
               <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 text-[var(--color-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

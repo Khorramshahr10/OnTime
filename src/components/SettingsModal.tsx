@@ -208,7 +208,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* Main Categories List */}
         {category === 'main' && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             <CategoryItem
               icon={<LocationIcon />}
               title="Location"
@@ -266,7 +266,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <h3 className="text-lg font-semibold text-[var(--color-text)]">Location</h3>
 
             {/* Method Picker */}
-            <div className="p-4 rounded-xl bg-[var(--color-card)]">
+            <div className="p-4 rounded-lg bg-[var(--color-card)]">
               <p className="text-sm text-[var(--color-muted)] mb-2">Set Location</p>
               <div className="flex gap-2">
                 <ToggleButton
@@ -302,7 +302,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* GPS */}
             {locationMethod === 'gps' && (
-              <div className="p-4 rounded-xl bg-[var(--color-card)] flex flex-col gap-3">
+              <div className="p-4 rounded-lg bg-[var(--color-card)] flex flex-col gap-3">
                 <p className="text-sm text-[var(--color-muted)]">Detect your location using GPS</p>
                 <button
                   onClick={async () => {
@@ -325,7 +325,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }
                   }}
                   disabled={gpsLoading}
-                  className="w-full py-3 bg-[var(--color-primary)] text-white rounded-xl font-medium disabled:opacity-50"
+                  className="w-full py-3 bg-[var(--color-primary)] text-white rounded-lg font-medium disabled:opacity-50"
                 >
                   {gpsLoading ? 'Locating...' : 'Detect My Location'}
                 </button>
@@ -358,13 +358,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* Manual Coordinates */}
             {locationMethod === 'manual' && (
-              <div className="p-4 rounded-xl bg-[var(--color-card)] flex flex-col gap-3">
+              <div className="p-4 rounded-lg bg-[var(--color-card)] flex flex-col gap-3">
                 <input
                   type="text"
                   placeholder="City name (e.g., New York)"
                   value={manualCity}
                   onChange={(e) => setManualCity(e.target.value)}
-                  className="w-full p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                  className="w-full p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 />
                 <div className="flex gap-3">
                   <input
@@ -375,7 +375,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     step="0.0001"
                     min="-90"
                     max="90"
-                    className="flex-1 p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    className="flex-1 p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   />
                   <input
                     type="number"
@@ -385,7 +385,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     step="0.0001"
                     min="-180"
                     max="180"
-                    className="flex-1 p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    className="flex-1 p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   />
                 </div>
                 <button
@@ -394,7 +394,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     setLocationMethod(null);
                   }}
                   disabled={!manualLat || !manualLng}
-                  className="w-full py-3 bg-[var(--color-primary)] text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-3 bg-[var(--color-primary)] text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Save Location
                 </button>
@@ -405,7 +405,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {settings.previousLocations.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium text-[var(--color-muted)] mb-2">Previous Locations</h4>
-                <div className="rounded-xl bg-[var(--color-card)] overflow-hidden divide-y divide-[var(--color-border)]">
+                <div className="rounded-lg bg-[var(--color-card)] overflow-hidden divide-y divide-[var(--color-border)]">
                   {settings.previousLocations.map((loc, index) => {
                     const isHome = settings.travel.homeBase?.cityName === loc.cityName &&
                       Math.abs((settings.travel.homeBase?.coordinates.latitude ?? 0) - loc.coordinates.latitude) < 0.01;
@@ -498,7 +498,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <select
                 value={settings.calculationMethod}
                 onChange={(e) => updateCalculationMethod(e.target.value as CalculationMethod)}
-                className="w-full p-3 rounded-xl bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="w-full p-3 rounded-lg bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               >
                 {CALCULATION_METHODS.map((method) => (
                   <option key={method.value} value={method.value}>
@@ -565,39 +565,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <ThemeOption
                   active={theme === 'light'}
                   onClick={() => setTheme('light')}
-                  icon={<SunIcon />}
                   label="Light"
+                  swatches={['#F5F6F8', '#FFFFFF', '#4361EE', '#E2E5EB']}
+                  colors={{ bg: '#FFFFFF', text: '#111318', border: '#E2E5EB', primary: '#4361EE' }}
                 />
                 <ThemeOption
                   active={theme === 'dark'}
                   onClick={() => setTheme('dark')}
-                  icon={<MoonIcon />}
                   label="Dark"
+                  swatches={['#0A0C10', '#16181D', '#6B8AFF', '#2A2E38']}
+                  colors={{ bg: '#16181D', text: '#F5F6F8', border: '#2A2E38', primary: '#6B8AFF' }}
                 />
                 <ThemeOption
                   active={theme === 'desert'}
                   onClick={() => setTheme('desert')}
-                  icon={<DesertIcon />}
                   label="Desert"
+                  swatches={['#1C1510', '#2A2018', '#C8954C', '#3D3024']}
+                  colors={{ bg: '#2A2018', text: '#F2E8D9', border: '#3D3024', primary: '#C8954C' }}
                 />
                 <ThemeOption
                   active={theme === 'rose'}
                   onClick={() => setTheme('rose')}
-                  icon={<RoseIcon />}
                   label="Rose"
+                  swatches={['#160D14', '#241A22', '#D4619C', '#3A2836']}
+                  colors={{ bg: '#241A22', text: '#F5EAF0', border: '#3A2836', primary: '#D4619C' }}
                 />
                 <ThemeOption
                   active={theme === 'system'}
                   onClick={() => setTheme('system')}
-                  icon={<SystemIcon />}
                   label="System"
                 />
                 <ThemeOption
                   active={theme === 'auto'}
                   onClick={() => setTheme('auto')}
-                  icon={<AutoIcon />}
                   label="Auto"
-                  description="Prayer-based"
                 />
               </div>
               {theme === 'auto' && (
@@ -649,20 +650,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {settings.jumuah.enabled && (
               <>
                 {/* Masjid Name */}
-                <div className="p-4 rounded-xl bg-[var(--color-card)]">
+                <div className="p-4 rounded-lg bg-[var(--color-card)]">
                   <label className="block text-sm text-[var(--color-muted)] mb-2">Masjid Name</label>
                   <input
                     type="text"
                     placeholder="e.g., Islamic Center of Example"
                     value={settings.jumuah.masjidName}
                     onChange={(e) => updateJumuah({ masjidName: e.target.value })}
-                    className="w-full p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    className="w-full p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   />
                 </div>
 
                 {/* Jumuah Times */}
                 {settings.jumuah.times.map((time, index) => (
-                  <div key={index} className="p-4 rounded-xl bg-[var(--color-card)]">
+                  <div key={index} className="p-4 rounded-lg bg-[var(--color-card)]">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-medium text-[var(--color-text)]">
                         {settings.jumuah.times.length > 1 ? `Jumu'ah ${index + 1}` : "Jumu'ah Time"}
@@ -690,7 +691,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             newTimes[index] = { ...newTimes[index], khutbah: e.target.value };
                             updateJumuah({ times: newTimes });
                           }}
-                          className="w-full p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
+                          className="w-full p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
                         />
                       </div>
                       <div className="flex-1">
@@ -703,7 +704,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             newTimes[index] = { ...newTimes[index], iqamah: e.target.value };
                             updateJumuah({ times: newTimes });
                           }}
-                          className="w-full p-3 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
+                          className="w-full p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
                         />
                       </div>
                     </div>
@@ -716,13 +717,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     const newTimes = [...settings.jumuah.times, { khutbah: '14:00', iqamah: '14:30' }];
                     updateJumuah({ times: newTimes });
                   }}
-                  className="p-4 rounded-xl bg-[var(--color-card)] text-[var(--color-primary)] font-medium hover:bg-[var(--color-border)] transition-colors text-center"
+                  className="p-4 rounded-lg bg-[var(--color-card)] text-[var(--color-primary)] font-medium hover:bg-[var(--color-border)] transition-colors text-center"
                 >
                   + Add Another Jumu'ah Time
                 </button>
 
                 {/* Reminder Time */}
-                <div className="p-4 rounded-xl bg-[var(--color-card)]">
+                <div className="p-4 rounded-lg bg-[var(--color-card)]">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[var(--color-text)] font-medium">Reminder</p>
@@ -731,7 +732,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <select
                       value={settings.jumuah.reminderMinutes}
                       onChange={(e) => updateJumuah({ reminderMinutes: parseInt(e.target.value) })}
-                      className="px-4 py-2 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
+                      className="px-4 py-2 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
                     >
                       <option value={15}>15 min</option>
                       <option value={30}>30 min</option>
@@ -767,7 +768,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   return (
                     <div 
                       key={prayer}
-                      className="p-4 rounded-xl bg-[var(--color-card)]"
+                      className="p-4 rounded-lg bg-[var(--color-card)]"
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-[var(--color-text)]">
@@ -839,7 +840,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Browse & Download */}
             <button
               onClick={() => setCategory('athan-catalog')}
-              className="w-full p-4 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity text-center"
+              className="w-full p-4 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity text-center"
             >
               Browse & Download Athans
             </button>
@@ -859,7 +860,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }
                     updateAthan({ selectedAthanId: null, currentChannelId: null });
                   }}
-                  className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors ${
+                  className={`flex items-center gap-3 p-4 rounded-lg cursor-pointer transition-colors ${
                     !settings.athan.selectedAthanId
                       ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]'
                       : 'bg-[var(--color-card)] hover:bg-[var(--color-border)]'
@@ -879,7 +880,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {settings.athan.downloadedAthans.map((athan) => (
                   <div
                     key={athan.id}
-                    className={`flex items-center gap-3 p-4 rounded-xl transition-colors ${
+                    className={`flex items-center gap-3 p-4 rounded-lg transition-colors ${
                       settings.athan.selectedAthanId === athan.id
                         ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]'
                         : 'bg-[var(--color-card)]'
@@ -1000,7 +1001,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           const channelId = await selectAthan(athan, settings.athan.currentFajrChannelId, 'fajr');
                           updateAthan({ selectedFajrAthanId: athan.id, currentFajrChannelId: channelId });
                         }}
-                        className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors ${
+                        className={`flex items-center gap-3 p-4 rounded-lg cursor-pointer transition-colors ${
                           settings.athan.selectedFajrAthanId === athan.id
                             ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]'
                             : 'bg-[var(--color-card)] hover:bg-[var(--color-border)]'
@@ -1025,7 +1026,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {settings.athan.downloadedAthans.length === 0 && (
-              <div className="p-6 rounded-xl bg-[var(--color-card)] text-center">
+              <div className="p-6 rounded-lg bg-[var(--color-card)] text-center">
                 <p className="text-[var(--color-muted)]">No athans downloaded yet.</p>
                 <p className="text-sm text-[var(--color-muted)] mt-1">
                   Browse the catalog to download athan audio.
@@ -1069,7 +1070,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {settings.travel.enabled && (
               <>
                 {/* Detection Mode */}
-                <div className="p-4 rounded-xl bg-[var(--color-card)]">
+                <div className="p-4 rounded-lg bg-[var(--color-card)]">
                   <p className="text-sm text-[var(--color-muted)] mb-2">Detection Mode</p>
                   <div className="flex gap-2">
                     <ToggleButton
@@ -1094,7 +1095,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* Home Base */}
-                <div className="p-4 rounded-xl bg-[var(--color-card)]">
+                <div className="p-4 rounded-lg bg-[var(--color-card)]">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-[var(--color-text)] font-medium">Home Base</p>
                     {settings.travel.homeBase && (
@@ -1140,13 +1141,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         }
                       }}
                       disabled={gpsLoading}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
                       {gpsLoading ? 'Locating...' : 'Use GPS Location'}
                     </button>
                     <button
                       onClick={() => setCategory('travel-home-search')}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-background)] text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-[var(--color-background)] text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
                     >
                       Search City
                     </button>
@@ -1157,7 +1158,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* Jama Toggles — combined card */}
-                <div className="rounded-xl bg-[var(--color-card)] overflow-hidden">
+                <div className="rounded-lg bg-[var(--color-card)] overflow-hidden">
                   <div
                     onClick={() => toggleJama('dhuhrAsr')}
                     className="flex items-center justify-between p-4 cursor-pointer hover:bg-[var(--color-border)] transition-colors"
@@ -1198,7 +1199,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* Max Travel Days + Qasr/Jama Info */}
-                <div className="p-4 rounded-xl bg-[var(--color-card)]">
+                <div className="p-4 rounded-lg bg-[var(--color-card)]">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[var(--color-text)] font-medium">Max Travel Days</p>
@@ -1207,7 +1208,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <select
                       value={settings.travel.maxTravelDays}
                       onChange={(e) => updateTravel({ maxTravelDays: parseInt(e.target.value) })}
-                      className="px-4 py-2 rounded-xl bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
+                      className="px-4 py-2 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
                     >
                       <option value={0}>Unlimited</option>
                       <option value={4}>4 days</option>
@@ -1234,7 +1235,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Current Status */}
                 {travelState.isTraveling && (
-                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <p className="text-amber-600 font-medium text-sm">Currently Traveling</p>
                     {travelState.distanceFromHomeKm !== null && (
                       <p className="text-amber-600/70 text-xs mt-1">
@@ -1266,19 +1267,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold text-[var(--color-text)]">About</h3>
             
-            <div className="p-6 rounded-xl bg-[var(--color-card)] text-center">
-              <img src="/logo.png" alt="OnTime" className="w-20 h-20 mx-auto mb-4 rounded-2xl" />
+            <div className="p-6 rounded-lg bg-[var(--color-card)] text-center">
+              <img src="/logo.png" alt="OnTime" className="w-20 h-20 mx-auto mb-4 rounded-lg" />
               <h4 className="text-xl font-semibold text-[var(--color-text)]">OnTime</h4>
               <p className="text-[var(--color-muted)] mt-1">Version 1.0.0</p>
             </div>
             
-            <div className="p-4 rounded-xl bg-[var(--color-card)]">
+            <div className="p-4 rounded-lg bg-[var(--color-card)]">
               <p className="text-sm text-[var(--color-muted)]">
                 Prayer times calculated using adhan-js library with high precision astronomical algorithms.
               </p>
             </div>
             
-            <div className="p-4 rounded-xl bg-[var(--color-card)]">
+            <div className="p-4 rounded-lg bg-[var(--color-card)]">
               <p className="text-sm text-[var(--color-text)] font-medium mb-1">Features</p>
               <ul className="text-sm text-[var(--color-muted)] space-y-1">
                 <li>- Accurate prayer times calculation</li>
@@ -1326,7 +1327,7 @@ function CategoryItem({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-4 p-4 rounded-xl bg-[var(--color-card)] hover:bg-[var(--color-border)] transition-colors text-left w-full"
+      className="flex items-center gap-4 p-4 rounded-lg bg-[var(--color-card)] hover:bg-[var(--color-border)] transition-colors text-left w-full"
     >
       <div className="w-10 h-10 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
         {icon}
@@ -1346,34 +1347,45 @@ function CategoryItem({
 function ThemeOption({
   active,
   onClick,
-  icon,
   label,
-  description,
+  swatches,
+  colors,
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
   label: string;
-  description?: string;
+  swatches?: string[];
+  colors?: { bg: string; text: string; border: string; primary: string };
 }) {
   return (
     <button
       onClick={onClick}
+      style={colors ? {
+        backgroundColor: colors.bg,
+        color: colors.text,
+        borderColor: active ? colors.primary : colors.border,
+        borderWidth: active ? '2px' : '1px',
+      } : undefined}
       className={`
-        p-4 rounded-xl flex flex-col items-center gap-2 transition-all
-        ${active 
-          ? 'bg-[var(--color-primary)] text-white' 
-          : 'bg-[var(--color-card)] text-[var(--color-text)] hover:bg-[var(--color-border)]'
-        }
+        p-3 rounded-lg flex flex-col items-center gap-2 transition-all border
+        ${!colors ? (active
+          ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+          : 'bg-[var(--color-card)] text-[var(--color-text)] border-[var(--color-border)] hover:bg-[var(--color-border)]'
+        ) : ''}
       `}
     >
-      {icon}
-      <span className="font-medium">{label}</span>
-      {description && (
-        <span className={`text-xs ${active ? 'text-white/70' : 'text-[var(--color-muted)]'}`}>
-          {description}
-        </span>
-      )}
+      {swatches ? (
+        <div className="flex gap-1">
+          {swatches.map((color, i) => (
+            <div
+              key={i}
+              className="w-5 h-5 rounded-full"
+              style={{ backgroundColor: color, border: '1px solid rgba(128,128,128,0.3)' }}
+            />
+          ))}
+        </div>
+      ) : null}
+      <span className="font-medium text-sm">{label}</span>
     </button>
   );
 }
@@ -1391,7 +1403,7 @@ function ToggleButton({
     <button
       onClick={onClick}
       className={`
-        flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all
+        flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all
         ${active
           ? 'bg-[var(--color-primary)] text-white'
           : 'bg-[var(--color-card)] text-[var(--color-text)] border border-[var(--color-border)] hover:bg-[var(--color-border)]'
@@ -1417,7 +1429,7 @@ function ToggleRow({
   return (
     <div
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between p-4 rounded-xl bg-[var(--color-card)] cursor-pointer hover:bg-[var(--color-border)] transition-colors"
+      className="flex items-center justify-between p-4 rounded-lg bg-[var(--color-card)] cursor-pointer hover:bg-[var(--color-border)] transition-colors"
     >
       <div className="mr-4">
         <p className="text-[var(--color-text)] font-medium">{label}</p>
@@ -1646,13 +1658,13 @@ function AthanCatalogPanel({
       <h3 className="text-lg font-semibold text-[var(--color-text)]">Athan Catalog</h3>
 
       {catalogLoading && (
-        <div className="p-6 rounded-xl bg-[var(--color-card)] text-center">
+        <div className="p-6 rounded-lg bg-[var(--color-card)] text-center">
           <p className="text-[var(--color-muted)]">Loading catalog...</p>
         </div>
       )}
 
       {catalogError && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
           <p className="text-red-500 text-sm">{catalogError}</p>
           <button
             onClick={() => {
@@ -1671,13 +1683,13 @@ function AthanCatalogPanel({
       )}
 
       {downloadError && (
-        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
           <p className="text-red-500 text-sm">{downloadError}</p>
         </div>
       )}
 
       {!catalogLoading && !catalogError && catalog.length === 0 && (
-        <div className="p-6 rounded-xl bg-[var(--color-card)] text-center">
+        <div className="p-6 rounded-lg bg-[var(--color-card)] text-center">
           <p className="text-[var(--color-muted)]">No athans found in the catalog.</p>
         </div>
       )}
@@ -1689,7 +1701,7 @@ function AthanCatalogPanel({
         return (
           <div
             key={idx}
-            className="flex items-center gap-3 p-4 rounded-xl bg-[var(--color-card)]"
+            className="flex items-center gap-3 p-4 rounded-lg bg-[var(--color-card)]"
           >
             {/* Preview button */}
             <button
