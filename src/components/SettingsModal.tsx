@@ -27,10 +27,10 @@ const PRAYER_LABELS: Record<PrayerName, string> = {
   isha: 'Isha',
 };
 
-const SOUND_OPTIONS: { value: NotificationSound; label: string }[] = [
+const BUILT_IN_SOUND_OPTIONS: { value: NotificationSound; label: string }[] = [
   { value: 'default', label: 'Default' },
-  { value: 'adhan', label: 'Adhan' },
-  { value: 'adhan_fajr', label: 'Adhan (Fajr)' },
+  { value: 'adhan', label: 'Adhan (Built-in)' },
+  { value: 'adhan_fajr', label: 'Adhan Fajr (Built-in)' },
   { value: 'silent', label: 'Silent' },
 ];
 
@@ -829,9 +829,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               onChange={(e) => updatePrayerNotification(prayer, { sound: e.target.value as NotificationSound })}
                               className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)]"
                             >
-                              {SOUND_OPTIONS.map((opt) => (
+                              {BUILT_IN_SOUND_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
+                              {settings.athan.downloadedAthans.length > 0 && (
+                                <optgroup label="Downloaded Athans">
+                                  {settings.athan.downloadedAthans.map((athan) => (
+                                    <option key={athan.id} value={`athan:${athan.id}`}>
+                                      {athan.muezzinName} — {athan.title}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
                             </select>
                           </div>
                         </div>

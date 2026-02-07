@@ -33,8 +33,8 @@ const PRAYER_MESSAGES: Record<PrayerName, { reminder: string; atTime: string }> 
   isha: { reminder: 'Isha prayer coming soon', atTime: 'Time for Isha prayer' },
 };
 
-// Map our sound types to actual sound file names
-const SOUND_FILES: Record<NotificationSound, string | undefined> = {
+// Map built-in sound types to actual sound file names
+const BUILT_IN_SOUNDS: Record<string, string | undefined> = {
   default: undefined, // Uses system default
   adhan: 'adhan.wav',
   adhan_fajr: 'adhan_fajr.wav',
@@ -73,9 +73,23 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
+// Check if a sound value refers to a downloaded athan
+function isDownloadedAthan(sound: NotificationSound): boolean {
+  return sound.startsWith('athan:');
+}
+
+// Get the athan ID from a sound value like 'athan:abc123'
+function getAthanIdFromSound(sound: NotificationSound): string {
+  return sound.replace('athan:', '');
+}
+
 // Get sound string for notification
 function getSoundForNotification(sound: NotificationSound): string | undefined {
-  return SOUND_FILES[sound];
+  if (isDownloadedAthan(sound)) {
+    // Downloaded athans use channels, not sound files directly
+    return undefined;
+  }
+  return BUILT_IN_SOUNDS[sound];
 }
 
 // Resolve the notification channel ID based on prayer, sound, and athan settings
@@ -84,6 +98,24 @@ function resolveChannelId(
   sound: NotificationSound,
   athanSettings: AthanSettings,
 ): string | undefined {
+  // Downloaded athan - find its channel
+  if (isDownloadedAthan(sound)) {
+    const athanId = getAthanIdFromSound(sound);
+    // Check if this athan has a dedicated fajr channel
+    if (prayer === 'fajr' && athanSettings.selectedFajrAthanId === athanId && athanSettings.currentFajrChannelId) {
+      return athanSettings.currentFajrChannelId;
+    }
+    // Use the main athan channel if the selected athan matches
+    if (athanSettings.selectedAthanId === athanId && athanSettings.currentChannelId) {
+      return athanSettings.currentChannelId;
+    }
+    // Fallback: use the main channel if any athan is selected
+    if (athanSettings.currentChannelId) {
+      return athanSettings.currentChannelId;
+    }
+    return undefined;
+  }
+
   // Fajr with dedicated fajr channel
   if (prayer === 'fajr' && (sound === 'adhan_fajr' || sound === 'adhan') && athanSettings.currentFajrChannelId) {
     return athanSettings.currentFajrChannelId;

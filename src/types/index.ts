@@ -60,7 +60,8 @@ export interface OptionalPrayersSettings {
   showLastThirdOfNight: boolean;
 }
 
-export type NotificationSound = 'default' | 'adhan' | 'adhan_fajr' | 'silent';
+// Built-in sounds + downloaded athan IDs (prefixed with 'athan:')
+export type NotificationSound = 'default' | 'adhan' | 'adhan_fajr' | 'silent' | string;
 
 export interface PrayerNotificationSettings {
   enabled: boolean;
