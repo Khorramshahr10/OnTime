@@ -1,17 +1,16 @@
 import { useEffect, useCallback } from 'react';
 import { scheduleNotifications, scheduleJumuahNotifications, setupNotificationListeners } from '../services/notificationService';
 import { useSettings } from '../context/SettingsContext';
-import type { PrayerTime } from '../types';
+import { useLocation } from '../context/LocationContext';
 
-export function useNotifications(prayers: PrayerTime[]) {
+export function useNotifications() {
   const { settings } = useSettings();
+  const { location } = useLocation();
 
-  // Schedule prayer notifications whenever prayers or settings change
+  // Schedule prayer notifications whenever location or settings change
   const reschedule = useCallback(async () => {
-    if (prayers.length > 0) {
-      await scheduleNotifications(prayers, settings);
-    }
-  }, [prayers, settings]);
+    await scheduleNotifications(location.coordinates, settings);
+  }, [location.coordinates, settings]);
 
   // Schedule Jumuah notifications when settings change
   const rescheduleJumuah = useCallback(async () => {
@@ -30,7 +29,6 @@ export function useNotifications(prayers: PrayerTime[]) {
   useEffect(() => {
     const cleanup = setupNotificationListeners((prayerName) => {
       console.log(`Notification clicked for: ${prayerName}`);
-      // Could navigate to specific prayer or show details
     });
 
     return cleanup;

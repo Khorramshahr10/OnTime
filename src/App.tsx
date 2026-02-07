@@ -37,7 +37,7 @@ function App() {
   }, []);
 
   // Set up push notifications
-  useNotifications(prayers);
+  useNotifications();
 
   // Configure status bar to match theme
   useEffect(() => {

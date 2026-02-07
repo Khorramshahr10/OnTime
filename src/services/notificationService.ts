@@ -1,5 +1,6 @@
 import { LocalNotifications, type ScheduleOptions } from '@capacitor/local-notifications';
-import type { PrayerTime, PrayerName, AllPrayerNames, Settings, NotificationSound, JumuahSettings, AthanSettings } from '../types';
+import type { PrayerName, AllPrayerNames, Settings, NotificationSound, JumuahSettings, AthanSettings, Coordinates } from '../types';
+import { calculatePrayerTimes } from './prayerService';
 
 // Base IDs for each prayer (we'll add offsets for reminder vs at-time)
 const PRAYER_BASE_IDS: Record<PrayerName, number> = {
@@ -95,7 +96,7 @@ function resolveChannelId(
 }
 
 export async function scheduleNotifications(
-  prayers: PrayerTime[],
+  coordinates: Coordinates,
   settings: Settings
 ): Promise<void> {
   if (!settings.notifications.enabled) {
@@ -115,29 +116,29 @@ export async function scheduleNotifications(
   const now = new Date();
   const notifications: ScheduleOptions['notifications'] = [];
 
-  // Schedule notifications for multiple days
+  // Schedule notifications for multiple days, recalculating prayer times each day
   for (let dayOffset = 0; dayOffset < DAYS_TO_SCHEDULE; dayOffset++) {
+    const targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() + dayOffset);
+
+    const { prayers } = calculatePrayerTimes(
+      coordinates,
+      targetDate,
+      settings.calculationMethod,
+      settings.asrCalculation,
+    );
+
     for (const prayer of prayers) {
-      // Only schedule notifications for core prayers
-      if (!isCorePrayer(prayer.name)) {
-        continue;
-      }
+      if (!isCorePrayer(prayer.name)) continue;
 
       const prayerSettings = settings.notifications.prayers[prayer.name];
-      
-      // Skip if this prayer's notifications are disabled
-      if (!prayerSettings.enabled) {
-        continue;
-      }
+      if (!prayerSettings.enabled) continue;
 
-      // Calculate prayer time for this day
       const prayerTime = new Date(prayer.time);
-      prayerTime.setDate(prayerTime.getDate() + dayOffset);
 
       // Schedule reminder notification (X minutes before)
       if (prayerSettings.reminderMinutes > 0) {
-        const reminderTime = new Date(prayerTime);
-        reminderTime.setMinutes(reminderTime.getMinutes() - prayerSettings.reminderMinutes);
+        const reminderTime = new Date(prayerTime.getTime() - prayerSettings.reminderMinutes * 60000);
 
         if (reminderTime > now) {
           const sound = getSoundForNotification(prayerSettings.sound);
