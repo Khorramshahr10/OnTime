@@ -770,29 +770,41 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       key={prayer}
                       className="p-4 rounded-lg bg-[var(--color-card)]"
                     >
-                      <div className="flex items-center justify-between mb-2">
+                      <div
+                        className="flex items-center justify-between mb-2 cursor-pointer"
+                        onClick={() => updatePrayerNotification(prayer, { enabled: !prayerSettings.enabled })}
+                      >
                         <span className="font-medium text-[var(--color-text)]">
                           {PRAYER_LABELS[prayer]}
                         </span>
-                        <input
-                          type="checkbox"
-                          checked={prayerSettings.enabled}
-                          onChange={(e) => updatePrayerNotification(prayer, { enabled: e.target.checked })}
-                          className="w-5 h-5 rounded accent-[var(--color-primary)]"
-                        />
+                        <div className={`
+                          relative w-11 h-6 rounded-full flex-shrink-0 transition-colors duration-200
+                          ${prayerSettings.enabled ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}
+                        `}>
+                          <div className={`
+                            absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200
+                            ${prayerSettings.enabled ? 'translate-x-5' : 'translate-x-0'}
+                          `} />
+                        </div>
                       </div>
                       
                       {prayerSettings.enabled && (
                         <div className="flex flex-col gap-3 pt-3 border-t border-[var(--color-border)]">
                           {/* At Prayer Time */}
-                          <div className="flex items-center justify-between">
+                          <div
+                            className="flex items-center justify-between cursor-pointer"
+                            onClick={() => updatePrayerNotification(prayer, { atPrayerTime: !prayerSettings.atPrayerTime })}
+                          >
                             <span className="text-sm text-[var(--color-muted)]">At prayer time</span>
-                            <input
-                              type="checkbox"
-                              checked={prayerSettings.atPrayerTime}
-                              onChange={(e) => updatePrayerNotification(prayer, { atPrayerTime: e.target.checked })}
-                              className="w-4 h-4 rounded accent-[var(--color-primary)]"
-                            />
+                            <div className={`
+                              relative w-9 h-5 rounded-full flex-shrink-0 transition-colors duration-200
+                              ${prayerSettings.atPrayerTime ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}
+                            `}>
+                              <div className={`
+                                absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200
+                                ${prayerSettings.atPrayerTime ? 'translate-x-4' : 'translate-x-0'}
+                              `} />
+                            </div>
                           </div>
                           
                           {/* Reminder */}
