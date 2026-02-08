@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { usePrayerTimes } from './hooks/usePrayerTimes';
 import { useNotifications } from './hooks/useNotifications';
@@ -24,6 +25,8 @@ function App() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
+  const settingsBackRef = useRef<(() => void) | null>(null);
+
   const { prayers, currentPrayer, nextPrayer, nextPrayerTime, countdown } = usePrayerTimes();
   const { effectiveTheme, updatePrayerTimes } = useTheme();
   const { travelState } = useTravel();
@@ -38,6 +41,24 @@ function App() {
 
   // Set up push notifications
   useNotifications();
+
+  // Handle Android back button / swipe gesture
+  const handleBackButton = useCallback(() => {
+    if (settingsBackRef.current) {
+      settingsBackRef.current();
+    } else if (isQiblaOpen) {
+      setIsQiblaOpen(false);
+    } else if (isDashboardOpen) {
+      setIsDashboardOpen(false);
+    } else {
+      CapApp.minimizeApp();
+    }
+  }, [isQiblaOpen, isDashboardOpen]);
+
+  useEffect(() => {
+    const listener = CapApp.addListener('backButton', handleBackButton);
+    return () => { listener.then(h => h.remove()); };
+  }, [handleBackButton]);
 
   // Configure status bar to match theme
   useEffect(() => {
@@ -72,7 +93,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[var(--color-background)] safe-area-bottom flex flex-col">
       <div className="max-w-lg mx-auto w-full flex flex-col flex-1">
-        {/* Top Bar - sticky below status bar */}
+{/* Top Bar - sticky below status bar */}
         <header className="sticky top-0 z-40 safe-area-top bg-[var(--color-background)] px-4 pt-2 pb-3 flex items-center justify-between">
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -156,7 +177,7 @@ function App() {
 
       {/* Modals */}
       <QiblaCompass isOpen={isQiblaOpen} onClose={() => setIsQiblaOpen(false)} />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onBackRef={settingsBackRef} />
       <Dashboard isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
     </div>
   );

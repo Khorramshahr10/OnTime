@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
 import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLocation } from '../context/LocationContext';
@@ -45,9 +45,10 @@ const REMINDER_OPTIONS = [
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onBackRef?: MutableRefObject<(() => void) | null>;
 }
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps) {
   const [category, setCategory] = useState<SettingsCategory>('main');
   
   const {
@@ -134,7 +135,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
+    if (category === 'main') {
+      onClose();
+      return;
+    }
     if (category === 'travel-home-search') {
       setCategory('travel');
       return;
@@ -148,12 +153,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       return;
     }
     setCategory('main');
-  };
+  }, [category, onClose]);
 
   const handleClose = () => {
     setCategory('main');
     onClose();
   };
+
+  // Expose back handler to parent for hardware back button
+  useEffect(() => {
+    if (onBackRef) {
+      onBackRef.current = isOpen ? handleBack : null;
+    }
+  }, [onBackRef, isOpen, handleBack]);
 
   // Get summary text for each category
   const getLocationSummary = () => location.cityName;
