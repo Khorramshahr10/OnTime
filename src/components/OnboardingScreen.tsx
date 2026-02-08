@@ -9,7 +9,7 @@ interface OnboardingScreenProps {
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [step, setStep] = useState<'welcome' | 'notifications' | 'location' | 'locating'>('welcome');
-  const [notifGranted, setNotifGranted] = useState(false);
+
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const { refreshLocation } = useLocation();
@@ -26,12 +26,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     try {
       const perm = await LocalNotifications.checkPermissions();
       if (perm.display === 'granted') {
-        setNotifGranted(true);
         setStep('location');
         return;
       }
-      const result = await LocalNotifications.requestPermissions();
-      setNotifGranted(result.display === 'granted');
+      await LocalNotifications.requestPermissions();
     } catch {
       // Continue even if notification permission fails
     }
