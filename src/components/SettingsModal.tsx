@@ -118,23 +118,6 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
     }
   }, [settings.notifications.enabled, category]);
 
-  if (!isOpen) return null;
-
-  const handleSaveManualLocation = () => {
-    const lat = parseFloat(manualLat);
-    const lng = parseFloat(manualLng);
-
-    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-      setManualLocation(
-        { latitude: lat, longitude: lng },
-        manualCity || 'Custom Location'
-      );
-      setManualLat('');
-      setManualLng('');
-      setManualCity('');
-    }
-  };
-
   const handleBack = useCallback(() => {
     if (category === 'main') {
       onClose();
@@ -155,17 +138,34 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
     setCategory('main');
   }, [category, onClose]);
 
-  const handleClose = () => {
-    setCategory('main');
-    onClose();
-  };
-
   // Expose back handler to parent for hardware back button
   useEffect(() => {
     if (onBackRef) {
       onBackRef.current = isOpen ? handleBack : null;
     }
   }, [onBackRef, isOpen, handleBack]);
+
+  if (!isOpen) return null;
+
+  const handleSaveManualLocation = () => {
+    const lat = parseFloat(manualLat);
+    const lng = parseFloat(manualLng);
+
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      setManualLocation(
+        { latitude: lat, longitude: lng },
+        manualCity || 'Custom Location'
+      );
+      setManualLat('');
+      setManualLng('');
+      setManualCity('');
+    }
+  };
+
+  const handleClose = () => {
+    setCategory('main');
+    onClose();
+  };
 
   // Get summary text for each category
   const getLocationSummary = () => location.cityName;
