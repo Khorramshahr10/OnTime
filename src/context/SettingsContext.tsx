@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { Preferences } from '@capacitor/preferences';
-import type { Settings, CalculationMethod, AsrCalculation, PrayerName, OptionalPrayersSettings, PrayerNotificationSettings, NotificationSound, JumuahSettings, SurahKahfSettings, TravelSettings, DisplaySettings, AthanSettings, SavedLocation } from '../types';
+import type { Settings, CalculationMethod, AsrCalculation, PrayerName, OptionalPrayersSettings, PrayerNotificationSettings, NotificationSound, JumuahSettings, SurahKahfSettings, TravelSettings, DisplaySettings, AthanSettings, SavedLocation, DesignStyle } from '../types';
 
 const SETTINGS_KEY = 'ontime_settings';
 
@@ -77,6 +77,7 @@ const defaultSettings: Settings = {
   surahKahf: defaultSurahKahfSettings,
   previousLocations: [],
   distanceUnit: 'miles',
+  designStyle: 'classic',
 };
 
 interface SettingsContextType {
@@ -94,6 +95,7 @@ interface SettingsContextType {
   updateDisplay: (updates: Partial<DisplaySettings>) => void;
   updateAthan: (updates: Partial<AthanSettings>) => void;
   updateDistanceUnit: (unit: 'miles' | 'km') => void;
+  updateDesignStyle: (style: DesignStyle) => void;
   addPreviousLocation: (loc: SavedLocation) => void;
   removePreviousLocation: (index: number) => void;
   isLoading: boolean;
@@ -180,6 +182,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           },
           previousLocations: parsed.previousLocations || [],
           distanceUnit: parsed.distanceUnit || 'miles',
+          designStyle: parsed.designStyle || 'classic',
         });
       }
     } catch (error) {
@@ -306,6 +309,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, distanceUnit: unit }));
   }
 
+  function updateDesignStyle(style: DesignStyle) {
+    setSettings((prev) => ({ ...prev, designStyle: style }));
+  }
+
   function addPreviousLocation(loc: SavedLocation) {
     setSettings((prev) => {
       // Don't add duplicates (same city name and close coordinates)
@@ -345,6 +352,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         updateDisplay,
         updateAthan,
         updateDistanceUnit,
+        updateDesignStyle,
         addPreviousLocation,
         removePreviousLocation,
         isLoading,

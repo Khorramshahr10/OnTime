@@ -135,6 +135,8 @@ export interface SurahKahfSettings {
   repeatIntervalHours: number;    // 0 = no repeats (just Maghrib), 2/4/6 = remind every N hours until next Maghrib
 }
 
+export type DesignStyle = 'classic' | 'islamic';
+
 export interface Settings {
   calculationMethod: CalculationMethod;
   asrCalculation: AsrCalculation;
@@ -147,6 +149,7 @@ export interface Settings {
   surahKahf: SurahKahfSettings;
   previousLocations: SavedLocation[];
   distanceUnit: 'miles' | 'km';
+  designStyle: DesignStyle;
 }
 
 export interface CityEntry {
