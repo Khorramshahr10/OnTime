@@ -104,7 +104,7 @@ export function calculatePrayerTimes(
     }
   };
 
-  let currentPrayer = prayerEnumToName(currentPrayerEnum);
+  const currentPrayer = prayerEnumToName(currentPrayerEnum);
   let nextPrayer = prayerEnumToName(nextPrayerEnum);
   let nextPrayerTime: Date | null = nextPrayer ? prayerTimes.timeForPrayer(nextPrayerEnum) : null;
 

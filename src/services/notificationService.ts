@@ -64,7 +64,7 @@ function isCorePrayer(name: AllPrayerNames): name is PrayerName {
 }
 
 // Generate unique notification ID for a prayer on a specific day
-function getNotificationId(prayer: PrayerName, dayOffset: number, isAtTime: boolean): number {
+export function getNotificationId(prayer: PrayerName, dayOffset: number, isAtTime: boolean): number {
   const baseId = PRAYER_BASE_IDS[prayer];
   const timeOffset = isAtTime ? AT_TIME_OFFSET : 0;
   return baseId + (dayOffset * 10) + timeOffset;
