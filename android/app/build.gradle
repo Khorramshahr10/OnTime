@@ -1,20 +1,41 @@
 apply plugin: 'com.android.application'
 
+// Read signing properties only if the file exists and has all required keys.
+// Otherwise, leave signingConfigs.release undefined so release builds fall back
+// to the debug keystore (suitable for local testing, NOT for Play Store uploads).
 def keystorePropertiesFile = rootProject.file("keystore.properties")
+def releaseSigningConfigured = false
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    def required = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+    def missing = required.findAll { !keystoreProperties[it] }
+    if (missing.isEmpty()) {
+        releaseSigningConfigured = true
+    } else {
+        logger.warn(
+            "OnTime: keystore.properties is missing key(s) ${missing}. " +
+            "Release builds will use the debug keystore and are NOT suitable for Play Store upload."
+        )
+    }
+} else {
+    logger.warn(
+        "OnTime: keystore.properties not found. Release builds will use the debug keystore " +
+        "and are NOT suitable for Play Store upload. See docs/SIGNING.md to set up release signing."
+    )
 }
 
 android {
     namespace = "com.ontimeapp.prayer"
     compileSdk = rootProject.ext.compileSdkVersion
-    signingConfigs {
-        release {
-            storeFile file(keystoreProperties['storeFile'] ?: '../ontime-release.keystore')
-            storePassword keystoreProperties['storePassword'] ?: ''
-            keyAlias keystoreProperties['keyAlias'] ?: ''
-            keyPassword keystoreProperties['keyPassword'] ?: ''
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
         }
     }
     defaultConfig {
@@ -32,7 +53,9 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
