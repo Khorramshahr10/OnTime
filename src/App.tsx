@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
@@ -15,14 +15,15 @@ import { IslamicPrayerTable } from './components/IslamicPrayerTable';
 import { IslamicCountdownTimer } from './components/IslamicCountdownTimer';
 import { GirihBackground } from './components/IslamicPatterns';
 import { LocationDisplay } from './components/LocationDisplay';
-import { QiblaCompass } from './components/QiblaCompass';
-import { SettingsModal } from './components/SettingsModal';
-import { Dashboard } from './components/Dashboard';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { TravelPromptDialog } from './components/TravelPromptDialog';
 import { NotificationPermissionDialog } from './components/NotificationPermissionDialog';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faKaaba } from '@fortawesome/free-solid-svg-icons';
+
+const QiblaCompass = lazy(() => import('./components/QiblaCompass').then(m => ({ default: m.QiblaCompass })));
+const SettingsModal = lazy(() => import('./components/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 
 const ONBOARDING_KEY = 'ontime_onboarding_complete';
 
@@ -298,9 +299,15 @@ function App() {
       </div>
 
       {/* Modals */}
-      <QiblaCompass isOpen={isQiblaOpen} onClose={() => setIsQiblaOpen(false)} />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onBackRef={settingsBackRef} />
-      <Dashboard isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+        <QiblaCompass isOpen={isQiblaOpen} onClose={() => setIsQiblaOpen(false)} />
+      </Suspense>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+        <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onBackRef={settingsBackRef} />
+      </Suspense>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+        <Dashboard isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
+      </Suspense>
       <TravelPromptDialog />
       <NotificationPermissionDialog />
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatTime, getTimeUntil } from '../services/prayerService';
 import { trackPrayer, getPrayerStatus, type PrayerStatus } from '../services/prayerTrackingService';
 import { useSettings } from '../context/SettingsContext';
@@ -54,7 +54,7 @@ function getSunnahPrayers(isTraveling: boolean) {
   return isTraveling ? SUNNAH_PRAYERS_TRAVEL : SUNNAH_PRAYERS_DEFAULT;
 }
 
-export function IslamicPrayerTable({ prayers, currentPrayer }: IslamicPrayerTableProps) {
+export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ prayers, currentPrayer }: IslamicPrayerTableProps) {
   const { settings } = useSettings();
   const { travelState } = useTravel();
   const [selectedPrayer, setSelectedPrayer] = useState<AllPrayerNames | null>(null);
@@ -211,7 +211,7 @@ export function IslamicPrayerTable({ prayers, currentPrayer }: IslamicPrayerTabl
       `}</style>
     </div>
   );
-}
+});
 
 // ─── Jama Prayer Row ──────────────────────────────────────
 interface IslamicJamaRowProps {

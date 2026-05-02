@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import type { Settings, CalculationMethod, AsrCalculation, PrayerName, OptionalPrayersSettings, PrayerNotificationSettings, NotificationSound, JumuahSettings, SurahKahfSettings, TravelSettings, DisplaySettings, AthanSettings, SavedLocation, DesignStyle } from '../types';
 
@@ -203,43 +203,43 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function updateCalculationMethod(method: CalculationMethod) {
+  const updateCalculationMethod = useCallback((method: CalculationMethod) => {
     setSettings((prev) => ({ ...prev, calculationMethod: method }));
-  }
+  }, []);
 
-  function updateAsrCalculation(method: AsrCalculation) {
+  const updateAsrCalculation = useCallback((method: AsrCalculation) => {
     setSettings((prev) => ({ ...prev, asrCalculation: method }));
-  }
+  }, []);
 
-  function updateOptionalPrayers(key: keyof OptionalPrayersSettings, value: boolean) {
+  const updateOptionalPrayers = useCallback((key: keyof OptionalPrayersSettings, value: boolean) => {
     setSettings((prev) => ({
       ...prev,
       optionalPrayers: { ...prev.optionalPrayers, [key]: value },
     }));
-  }
+  }, []);
 
-  function updateNotifications(enabled: boolean) {
+  const updateNotifications = useCallback((enabled: boolean) => {
     setSettings((prev) => ({
       ...prev,
       notifications: { ...prev.notifications, enabled },
     }));
-  }
+  }, []);
 
-  function updateDefaultSound(sound: NotificationSound) {
+  const updateDefaultSound = useCallback((sound: NotificationSound) => {
     setSettings((prev) => ({
       ...prev,
       notifications: { ...prev.notifications, defaultSound: sound },
     }));
-  }
+  }, []);
 
-  function updateDefaultReminderMinutes(minutes: number) {
+  const updateDefaultReminderMinutes = useCallback((minutes: number) => {
     setSettings((prev) => ({
       ...prev,
       notifications: { ...prev.notifications, defaultReminderMinutes: minutes },
     }));
-  }
+  }, []);
 
-  function updatePrayerNotification(prayer: PrayerName, updates: Partial<PrayerNotificationSettings>) {
+  const updatePrayerNotification = useCallback((prayer: PrayerName, updates: Partial<PrayerNotificationSettings>) => {
     setSettings((prev) => ({
       ...prev,
       notifications: {
@@ -253,9 +253,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         },
       },
     }));
-  }
+  }, []);
 
-  function updateJumuah(updates: Partial<JumuahSettings>) {
+  const updateJumuah = useCallback((updates: Partial<JumuahSettings>) => {
     setSettings((prev) => ({
       ...prev,
       jumuah: {
@@ -263,9 +263,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...updates,
       },
     }));
-  }
+  }, []);
 
-  function updateTravel(updates: Partial<TravelSettings>) {
+  const updateTravel = useCallback((updates: Partial<TravelSettings>) => {
     setSettings((prev) => ({
       ...prev,
       travel: {
@@ -273,9 +273,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...updates,
       },
     }));
-  }
+  }, []);
 
-  function updateSurahKahf(updates: Partial<SurahKahfSettings>) {
+  const updateSurahKahf = useCallback((updates: Partial<SurahKahfSettings>) => {
     setSettings((prev) => ({
       ...prev,
       surahKahf: {
@@ -283,9 +283,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...updates,
       },
     }));
-  }
+  }, []);
 
-  function updateDisplay(updates: Partial<DisplaySettings>) {
+  const updateDisplay = useCallback((updates: Partial<DisplaySettings>) => {
     setSettings((prev) => ({
       ...prev,
       display: {
@@ -293,9 +293,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...updates,
       },
     }));
-  }
+  }, []);
 
-  function updateAthan(updates: Partial<AthanSettings>) {
+  const updateAthan = useCallback((updates: Partial<AthanSettings>) => {
     setSettings((prev) => ({
       ...prev,
       athan: {
@@ -303,17 +303,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ...updates,
       },
     }));
-  }
+  }, []);
 
-  function updateDistanceUnit(unit: 'miles' | 'km') {
+  const updateDistanceUnit = useCallback((unit: 'miles' | 'km') => {
     setSettings((prev) => ({ ...prev, distanceUnit: unit }));
-  }
+  }, []);
 
-  function updateDesignStyle(style: DesignStyle) {
+  const updateDesignStyle = useCallback((style: DesignStyle) => {
     setSettings((prev) => ({ ...prev, designStyle: style }));
-  }
+  }, []);
 
-  function addPreviousLocation(loc: SavedLocation) {
+  const addPreviousLocation = useCallback((loc: SavedLocation) => {
     setSettings((prev) => {
       // Don't add duplicates (same city name and close coordinates)
       const isDuplicate = prev.previousLocations.some(
@@ -326,38 +326,57 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const updated = [loc, ...prev.previousLocations].slice(0, 20);
       return { ...prev, previousLocations: updated };
     });
-  }
+  }, []);
 
-  function removePreviousLocation(index: number) {
+  const removePreviousLocation = useCallback((index: number) => {
     setSettings((prev) => ({
       ...prev,
       previousLocations: prev.previousLocations.filter((_, i) => i !== index),
     }));
-  }
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    settings,
+    updateCalculationMethod,
+    updateAsrCalculation,
+    updateOptionalPrayers,
+    updateNotifications,
+    updateDefaultSound,
+    updateDefaultReminderMinutes,
+    updatePrayerNotification,
+    updateJumuah,
+    updateTravel,
+    updateSurahKahf,
+    updateDisplay,
+    updateAthan,
+    updateDistanceUnit,
+    updateDesignStyle,
+    addPreviousLocation,
+    removePreviousLocation,
+    isLoading,
+  }), [
+    settings,
+    isLoading,
+    updateCalculationMethod,
+    updateAsrCalculation,
+    updateOptionalPrayers,
+    updateNotifications,
+    updateDefaultSound,
+    updateDefaultReminderMinutes,
+    updatePrayerNotification,
+    updateJumuah,
+    updateTravel,
+    updateSurahKahf,
+    updateDisplay,
+    updateAthan,
+    updateDistanceUnit,
+    updateDesignStyle,
+    addPreviousLocation,
+    removePreviousLocation,
+  ]);
 
   return (
-    <SettingsContext.Provider
-      value={{
-        settings,
-        updateCalculationMethod,
-        updateAsrCalculation,
-        updateOptionalPrayers,
-        updateNotifications,
-        updateDefaultSound,
-        updateDefaultReminderMinutes,
-        updatePrayerNotification,
-        updateJumuah,
-        updateTravel,
-        updateSurahKahf,
-        updateDisplay,
-        updateAthan,
-        updateDistanceUnit,
-        updateDesignStyle,
-        addPreviousLocation,
-        removePreviousLocation,
-        isLoading,
-      }}
-    >
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );
