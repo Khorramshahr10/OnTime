@@ -21,6 +21,7 @@ vi.mock('@capacitor/core', () => ({
   CapacitorHttp: {
     get: (...args: unknown[]) => mockHttpGet(...args),
   },
+  registerPlugin: () => ({}),
 }));
 
 import { downloadAthan, AthanDownloadError } from '../services/athanService';

@@ -21,13 +21,11 @@ vi.mock('@capacitor/local-notifications', () => ({
 
 import {
   cancelByCategory,
-  cancelJumuahNotifications,
-  cancelSurahKahfNotifications,
   scheduleNotifications,
   scheduleJumuahNotifications,
   getNotificationId,
 } from '../services/notificationService';
-import type { Settings, Coordinates, JumuahSettings, SurahKahfSettings } from '../types';
+import type { Settings, Coordinates, JumuahSettings } from '../types';
 
 // Helper to create a minimal Settings object for scheduleNotifications
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
