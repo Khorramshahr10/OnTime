@@ -50,6 +50,11 @@ function getCalculationParameters(method: CalcMethodType): CalculationParameters
   return methods[method]();
 }
 
+// Resolve the device's current IANA timezone string
+export function getTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 export function calculatePrayerTimes(
   coords: CoordsType,
   date: Date,
