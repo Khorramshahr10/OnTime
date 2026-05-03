@@ -7,6 +7,9 @@ export type OptionalPrayerName = 'middleOfNight' | 'lastThirdOfNight' | 'tahajju
 // All prayer types combined
 export type AllPrayerNames = PrayerName | OptionalPrayerName;
 
+// Notification categories for scoped cancellation
+export type NotificationCategory = 'prayer' | 'jumuah' | 'kahf' | 'reminder';
+
 export interface PrayerTime {
   name: AllPrayerNames;
   label: string;

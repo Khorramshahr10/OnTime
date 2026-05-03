@@ -5,6 +5,13 @@ import type { AthanCatalogEntry, AthanFile } from '../types';
 
 const ATHAN_SUBDIR = 'athans';
 
+export class AthanDownloadError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'AthanDownloadError';
+  }
+}
+
 export async function fetchAthanCatalog(): Promise<AthanCatalogEntry[]> {
   const response = await CapacitorHttp.get({ url: 'https://www.assabile.com/adhan-call-prayer' });
   const html = response.data as string;
@@ -46,10 +53,19 @@ export async function downloadAthan(entry: AthanCatalogEntry): Promise<AthanFile
   const filename = `${id}.mp3`;
 
   // Download via native HTTP to avoid CORS, get base64 data
-  const response = await CapacitorHttp.get({
-    url: entry.sourceUrl,
-    responseType: 'blob',
-  });
+  let responseData: string;
+  try {
+    const response = await CapacitorHttp.get({
+      url: entry.sourceUrl,
+      responseType: 'blob',
+    });
+    responseData = response.data as string;
+  } catch (err) {
+    throw new AthanDownloadError(
+      'Could not download athan sound. Please check your internet connection.',
+      err,
+    );
+  }
 
   // Ensure athans directory exists
   try {
@@ -63,11 +79,18 @@ export async function downloadAthan(entry: AthanCatalogEntry): Promise<AthanFile
   }
 
   // Write the downloaded data
-  await Filesystem.writeFile({
-    path: `${ATHAN_SUBDIR}/${filename}`,
-    data: response.data,
-    directory: Directory.External,
-  });
+  try {
+    await Filesystem.writeFile({
+      path: `${ATHAN_SUBDIR}/${filename}`,
+      data: responseData,
+      directory: Directory.External,
+    });
+  } catch (err) {
+    throw new AthanDownloadError(
+      'Could not save athan sound. Your device may be out of storage.',
+      err,
+    );
+  }
 
   return {
     id,

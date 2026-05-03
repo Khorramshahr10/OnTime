@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { calculatePrayerTimes, getTimeUntil } from '../services/prayerService';
 import { useSettings } from '../context/SettingsContext';
 import { useLocation } from '../context/LocationContext';
+import { useTimezone } from './useTimezone';
 import type { PrayerTimesData } from '../types';
 
 export function usePrayerTimes() {
@@ -9,8 +10,9 @@ export function usePrayerTimes() {
   const { location } = useLocation();
   const [date, setDate] = useState(new Date());
   const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const timezone = useTimezone();
 
-  // Recalculate prayer times when settings or location change
+  // Recalculate prayer times when settings, location, or date change
   const prayerData: PrayerTimesData = useMemo(() => {
     return calculatePrayerTimes(
       location.coordinates,
@@ -19,6 +21,11 @@ export function usePrayerTimes() {
       settings.asrCalculation
     );
   }, [location.coordinates, date, settings.calculationMethod, settings.asrCalculation]);
+
+  // When the timezone changes, force a date refresh so the next memo recalculates
+  useEffect(() => {
+    setDate(new Date());
+  }, [timezone]);
 
   // Update date at midnight
   useEffect(() => {
