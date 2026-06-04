@@ -1,0 +1,16 @@
+{
+  "dev_branch": "dev",
+  "lint_cmd": "npm run lint",
+  "typecheck_cmd": "npx tsc --noEmit",
+  "test_cmd": "npm test",
+  "context_excludes": [
+    "node_modules",
+    "dist",
+    "android/build",
+    "ios/Pods",
+    "*.aab",
+    "*.png",
+    "*.zip",
+    "*.svg"
+  ]
+}

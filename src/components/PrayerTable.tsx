@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatTime, getTimeUntil } from '../services/prayerService';
 import { trackPrayer, getPrayerStatus, type PrayerStatus } from '../services/prayerTrackingService';
 import { useSettings } from '../context/SettingsContext';
@@ -50,7 +50,7 @@ function getSunnahPrayers(isTraveling: boolean): Partial<Record<AllPrayerNames, 
   return isTraveling ? SUNNAH_PRAYERS_TRAVEL : SUNNAH_PRAYERS_DEFAULT;
 }
 
-export function PrayerTable({ prayers, currentPrayer }: PrayerTableProps) {
+export const PrayerTable = React.memo(function PrayerTable({ prayers, currentPrayer }: PrayerTableProps) {
   const { settings } = useSettings();
   const { travelState } = useTravel();
   const [selectedPrayer, setSelectedPrayer] = useState<AllPrayerNames | null>(null);
@@ -224,7 +224,7 @@ export function PrayerTable({ prayers, currentPrayer }: PrayerTableProps) {
       </div>
     </div>
   );
-}
+});
 
 interface JamaPrayerRowProps {
   prayer: PrayerTime;

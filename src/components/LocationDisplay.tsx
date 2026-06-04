@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from '../context/LocationContext';
+import { useSettings } from '../context/SettingsContext';
+import { formatHijriLine } from '../utils/hijriDate';
 
 interface LocationDisplayProps {
   onRefresh?: () => void;
@@ -8,6 +10,15 @@ interface LocationDisplayProps {
 export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
   const { location, isLoading, error, refreshLocation } = useLocation();
   const [showMap, setShowMap] = useState(false);
+  const { settings, isLoading: settingsLoading } = useSettings();
+  const hijriLine = useMemo(
+    () => formatHijriLine(new Date(), settings.display.hijriOffset),
+    // The toDateString() dep makes the memo recompute when the local calendar day
+    // changes. The app's countdown ticker re-renders this component each second,
+    // so within one tick of midnight the subtitle advances on its own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.display.hijriOffset, new Date().toDateString()]
+  );
 
   const handleTap = () => {
     if (error) {
@@ -29,20 +40,25 @@ export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
       <button
         onClick={handleTap}
         disabled={isLoading}
-        className="flex items-center gap-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+        className="flex flex-col items-center gap-0.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-        </svg>
-        <span className="text-sm font-medium">
-          {isLoading ? 'Loading...' : error ? 'Tap to retry' : location.cityName}
-        </span>
-        {isLoading && (
-          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        <div className="flex items-center gap-1.5">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
           </svg>
+          <span className="text-sm font-medium">
+            {isLoading ? 'Loading...' : error ? 'Tap to retry' : location.cityName}
+          </span>
+          {isLoading && (
+            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+        </div>
+        {hijriLine && !isLoading && !settingsLoading && !error && (
+          <span className="text-[11px] text-[var(--color-muted)] opacity-80 leading-tight">{hijriLine}</span>
         )}
       </button>
 

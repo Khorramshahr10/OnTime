@@ -64,6 +64,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
     updateDisplay,
     updateAthan,
     updateDistanceUnit,
+    updateDesignStyle,
     addPreviousLocation,
     removePreviousLocation,
   } = useSettings();
@@ -177,7 +178,8 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
   };
   const getAppearanceSummary = () => {
     const themeLabels = { light: 'Light', dark: 'Dark', system: 'System', auto: 'Auto (Prayer)', desert: 'Desert', rose: 'Rose', forest: 'Forest', ocean: 'Ocean' };
-    return themeLabels[theme];
+    const designLabels = { classic: 'Classic', islamic: 'Islamic' };
+    return `${themeLabels[theme]} \u00B7 ${designLabels[settings.designStyle] || 'Classic'}`;
   };
   const getJumuahSummary = () => {
     if (!settings.jumuah.enabled) return 'Off';
@@ -665,6 +667,35 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
               )}
             </div>
 
+            {/* Design Style */}
+            <div>
+              <label className="block text-sm text-[var(--color-muted)] mb-2">Design Style</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => updateDesignStyle('classic')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    settings.designStyle === 'classic'
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                      : 'border-[var(--color-border)] bg-[var(--color-card)]'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-[var(--color-text)]">Classic</div>
+                  <div className="text-xs text-[var(--color-muted)] mt-0.5">Clean, utilitarian</div>
+                </button>
+                <button
+                  onClick={() => updateDesignStyle('islamic')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    settings.designStyle === 'islamic'
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                      : 'border-[var(--color-border)] bg-[var(--color-card)]'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-[var(--color-text)]">Islamic</div>
+                  <div className="text-xs text-[var(--color-muted)] mt-0.5">Geometric patterns, Arabic</div>
+                </button>
+              </div>
+            </div>
+
             {/* Display Cards */}
             <div>
               <label className="block text-sm text-[var(--color-muted)] mb-2">Display Cards</label>
@@ -688,6 +719,35 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                   onChange={(v) => updateDisplay({ showSunnahCard: v })}
                 />
               </div>
+            </div>
+
+            {/* Hijri Date Adjustment */}
+            <div role="group" aria-labelledby="hijri-offset-label">
+              <label id="hijri-offset-label" className="block text-sm text-[var(--color-muted)] mb-2">Hijri Date Adjustment</label>
+              <div className="grid grid-cols-5 gap-2">
+                {([-2, -1, 0, 1, 2] as const).map((value) => {
+                  const isActive = settings.display.hijriOffset === value;
+                  const label = value > 0 ? `+${value}` : `${value}`;
+                  return (
+                    <button
+                      key={value}
+                      aria-pressed={isActive}
+                      aria-label={`Hijri date offset ${label} days`}
+                      onClick={() => updateDisplay({ hijriOffset: value })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        isActive
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                          : 'border-[var(--color-border)] bg-[var(--color-card)]'
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-[var(--color-text)]">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-[var(--color-muted)] mt-2">
+                Adjust if your local moon-sighting differs from the Saudi (Umm al-Qura) calendar.
+              </p>
             </div>
           </div>
         )}

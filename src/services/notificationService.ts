@@ -1,6 +1,23 @@
 import { LocalNotifications, type ScheduleOptions } from '@capacitor/local-notifications';
-import type { PrayerName, AllPrayerNames, Settings, NotificationSound, JumuahSettings, SurahKahfSettings, AthanSettings, Coordinates } from '../types';
+import type { PrayerName, AllPrayerNames, Settings, NotificationSound, JumuahSettings, SurahKahfSettings, AthanSettings, Coordinates, NotificationCategory } from '../types';
 import { calculatePrayerTimes } from './prayerService';
+
+/**
+ * Notification ID ranges (do not reuse):
+ *
+ *   prayer:     1–999   (one per prayer per scheduled day)
+ *   jumuah:     1000–1099
+ *   kahf:       1100–1199
+ *   reminder:   1200–1299
+ *
+ * Prayer sub-ranges within 1–999:
+ *   fajr:    100–199   base 100, formula: base + (dayOffset * 10) + timeOffset
+ *   sunrise: 200–299   base 200
+ *   dhuhr:   300–399   base 300
+ *   asr:     400–499   base 400
+ *   maghrib: 500–599   base 500
+ *   isha:    600–699   base 600
+ */
 
 // Base IDs for each prayer (we'll add offsets for reminder vs at-time)
 const PRAYER_BASE_IDS: Record<PrayerName, number> = {
@@ -12,8 +29,8 @@ const PRAYER_BASE_IDS: Record<PrayerName, number> = {
   isha: 600,
 };
 
-// Jumuah notification IDs (700-799 range)
-const JUMUAH_BASE_ID = 700;
+// Jumuah notification IDs (1000–1099 range)
+const JUMUAH_BASE_ID = 1000;
 
 // Offset for at-time notifications (reminder = base, at-time = base + 1)
 const AT_TIME_OFFSET = 1;
@@ -47,7 +64,7 @@ function isCorePrayer(name: AllPrayerNames): name is PrayerName {
 }
 
 // Generate unique notification ID for a prayer on a specific day
-function getNotificationId(prayer: PrayerName, dayOffset: number, isAtTime: boolean): number {
+export function getNotificationId(prayer: PrayerName, dayOffset: number, isAtTime: boolean): number {
   const baseId = PRAYER_BASE_IDS[prayer];
   const timeOffset = isAtTime ? AT_TIME_OFFSET : 0;
   return baseId + (dayOffset * 10) + timeOffset;
@@ -127,6 +144,14 @@ function resolveChannelId(
   return undefined;
 }
 
+// ID range boundaries for each notification category
+const CATEGORY_RANGES: Record<NotificationCategory, [number, number]> = {
+  prayer: [1, 999],
+  jumuah: [1000, 1099],
+  kahf: [1100, 1199],
+  reminder: [1200, 1299],
+};
+
 export async function scheduleNotifications(
   coordinates: Coordinates,
   settings: Settings
@@ -142,8 +167,8 @@ export async function scheduleNotifications(
     return;
   }
 
-  // Cancel existing notifications first
-  await cancelAllNotifications();
+  // Cancel only prayer-range notifications, not other categories
+  await cancelByCategory('prayer');
 
   const now = new Date();
   const notifications: ScheduleOptions['notifications'] = [];
@@ -232,6 +257,22 @@ export async function cancelAllNotifications(): Promise<void> {
     }
   } catch (error) {
     console.error('Failed to cancel notifications:', error);
+  }
+}
+
+// Cancel all notifications within a specific category's ID range
+export async function cancelByCategory(category: NotificationCategory): Promise<void> {
+  try {
+    const pending = await LocalNotifications.getPending();
+    const [min, max] = CATEGORY_RANGES[category];
+    const toCancel = pending.notifications.filter((n) => n.id >= min && n.id <= max);
+    if (toCancel.length > 0) {
+      await LocalNotifications.cancel({
+        notifications: toCancel.map((n) => ({ id: n.id })),
+      });
+    }
+  } catch (error) {
+    console.error(`Failed to cancel ${category} notifications:`, error);
   }
 }
 
@@ -361,8 +402,8 @@ export async function scheduleJumuahNotifications(
   }
 }
 
-// Surah Kahf notification IDs (800-899 range)
-const SURAH_KAHF_BASE_ID = 800;
+// Surah Kahf notification IDs (1100–1199 range)
+const SURAH_KAHF_BASE_ID = 1100;
 
 // Weeks ahead to schedule Surah Kahf notifications
 const WEEKS_TO_SCHEDULE_KAHF = 4;
@@ -481,7 +522,7 @@ export async function cancelSurahKahfNotifications(): Promise<void> {
   try {
     const pending = await LocalNotifications.getPending();
     const kahfNotifications = pending.notifications.filter((n) => {
-      return n.id >= SURAH_KAHF_BASE_ID && n.id < 900;
+      return n.id >= SURAH_KAHF_BASE_ID && n.id < 1200;
     });
     if (kahfNotifications.length > 0) {
       await LocalNotifications.cancel({
@@ -498,8 +539,8 @@ export async function cancelJumuahNotifications(): Promise<void> {
   try {
     const pending = await LocalNotifications.getPending();
     const jumuahNotifications = pending.notifications.filter((n) => {
-      // Jumuah notifications are in the 700-799 range
-      return n.id >= JUMUAH_BASE_ID && n.id < 800;
+      // Jumuah notifications are in the 1000–1099 range
+      return n.id >= JUMUAH_BASE_ID && n.id < 1100;
     });
     
     if (jumuahNotifications.length > 0) {
