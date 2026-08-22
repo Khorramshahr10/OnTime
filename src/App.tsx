@@ -15,6 +15,7 @@ import { IslamicPrayerTable } from './components/IslamicPrayerTable';
 import { IslamicCountdownTimer } from './components/IslamicCountdownTimer';
 import { GirihBackground } from './components/IslamicPatterns';
 import { LocationDisplay } from './components/LocationDisplay';
+import { SunDomeCard } from './components/SunDomeCard';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { TravelPromptDialog } from './components/TravelPromptDialog';
 import { NotificationPermissionDialog } from './components/NotificationPermissionDialog';
@@ -231,6 +232,10 @@ function App() {
 
         {/* Content */}
         <div className={isIslamic ? 'px-5 pb-6' : 'px-4 pb-6'}>
+
+        {/* Today's Sky — dropped while a full-screen overlay covers it, so we
+            aren't running a hidden WebGL context alongside the qibla globe. */}
+        {!isQiblaOpen && !isDashboardOpen && !isSettingsOpen && <SunDomeCard prayers={prayers} />}
 
         {/* Current Prayer & Countdown */}
         {(currentPrayer || nextPrayer) && (

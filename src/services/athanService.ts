@@ -6,9 +6,11 @@ import type { AthanCatalogEntry, AthanFile } from '../types';
 const ATHAN_SUBDIR = 'athans';
 
 export class AthanDownloadError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  readonly cause?: unknown;
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = 'AthanDownloadError';
+    this.cause = cause;
   }
 }
 

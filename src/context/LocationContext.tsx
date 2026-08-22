@@ -91,11 +91,12 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       };
 
       // Reverse geocode to get city name
-      const { displayName, countryCode } = await reverseGeocode(coords);
+      const { displayName, shortName, countryCode } = await reverseGeocode(coords);
 
       const newLocation: LocationData = {
         coordinates: coords,
         cityName: displayName,
+        shortName,
         countryCode,
       };
 
@@ -110,7 +111,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function reverseGeocode(coords: Coordinates): Promise<{ displayName: string; countryCode?: string }> {
+  async function reverseGeocode(
+    coords: Coordinates
+  ): Promise<{ displayName: string; shortName?: string; countryCode?: string }> {
     try {
       // Using free Nominatim API for reverse geocoding
       const response = await fetch(
@@ -144,7 +147,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           displayName = 'Unknown Location';
         }
 
-        return { displayName, countryCode };
+        return { displayName, shortName: city || undefined, countryCode };
       }
     } catch (err) {
       console.error('Reverse geocoding failed:', err);
@@ -154,7 +157,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }
 
   function setManualLocation(coords: Coordinates, cityName: string, countryCode?: string) {
-    const newLocation: LocationData = { coordinates: coords, cityName, countryCode };
+    // A manually picked city is already short enough to use as-is.
+    const newLocation: LocationData = { coordinates: coords, cityName, shortName: cityName, countryCode };
     setLocation(newLocation);
     saveLocation(newLocation);
     setError(null);
@@ -180,9 +184,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       longitude: position.coords.longitude,
     };
 
-    const { displayName, countryCode } = await reverseGeocode(coords);
+    const { displayName, shortName, countryCode } = await reverseGeocode(coords);
 
-    return { coordinates: coords, cityName: displayName, countryCode };
+    return { coordinates: coords, cityName: displayName, shortName, countryCode };
   }
 
   return (

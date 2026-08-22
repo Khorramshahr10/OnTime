@@ -1,5 +1,16 @@
+import { lazy, Suspense, useMemo } from 'react';
 import { useLocation } from '../context/LocationContext';
+import { QiblaHeadingBar } from './QiblaHeading';
+import { useQiblaHeading } from '../hooks/useQiblaHeading';
+import { labelForGlobe } from '../utils/placeName';
 import { calculateQiblaDirection } from '../services/prayerService';
+
+const QiblaGlobeView = lazy(() =>
+  import('./three/Scenes').then((m) => ({ default: m.QiblaGlobeView }))
+);
+const KaabaMiniView = lazy(() =>
+  import('./three/Scenes').then((m) => ({ default: m.KaabaMiniView }))
+);
 
 interface QiblaCompassProps {
   isOpen: boolean;
@@ -9,33 +20,25 @@ interface QiblaCompassProps {
 export function QiblaCompass({ isOpen, onClose }: QiblaCompassProps) {
   const { location } = useLocation();
 
+  const { latitude, longitude } = location.coordinates;
+  // The globe gets the settlement only — the full name is a street address
+  // that overflows the canvas, and the card above already shows it in full.
+  const cityName = labelForGlobe(location.shortName || location.cityName || 'You');
+
+  const heading = useQiblaHeading();
+
+  // Feed the compass reading to the globe so it turns with the phone. Rounded
+  // to whole degrees so sensor jitter doesn't rebuild the scene every frame.
+  const turnDegrees = heading.supported && !heading.unavailable ? Math.round(heading.rotation) : null;
+
+  const globeData = useMemo(
+    () => ({ latitude, longitude, cityName, turnDegrees }),
+    [latitude, longitude, cityName, turnDegrees]
+  );
+
   if (!isOpen) return null;
 
-  const userLat = location.coordinates.latitude;
-  const userLon = location.coordinates.longitude;
   const qiblaDirection = calculateQiblaDirection(location.coordinates);
-
-  // Tight bbox around user location (~2km view)
-  const latSpan = 0.015;
-  const lonSpan = 0.025;
-
-  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${userLon - lonSpan},${userLat - latSpan},${userLon + lonSpan},${userLat + latSpan}&layer=mapnik`;
-
-  // Arrow endpoint: extend from center in the Qibla direction
-  // qiblaDirection is degrees clockwise from North
-  // In SVG: 0° = up (north), 90° = right (east)
-  const arrowLength = 38; // % of viewbox from center
-  const angleRad = (qiblaDirection * Math.PI) / 180;
-  const arrowEndX = 50 + arrowLength * Math.sin(angleRad);
-  const arrowEndY = 50 - arrowLength * Math.cos(angleRad);
-
-  // Arrowhead points
-  const headLength = 4;
-  const headAngle = 25 * (Math.PI / 180);
-  const ax1 = arrowEndX - headLength * Math.sin(angleRad - headAngle);
-  const ay1 = arrowEndY + headLength * Math.cos(angleRad - headAngle);
-  const ax2 = arrowEndX - headLength * Math.sin(angleRad + headAngle);
-  const ay2 = arrowEndY + headLength * Math.cos(angleRad + headAngle);
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--color-background)] safe-area-top safe-area-bottom animate-slide-in">
@@ -65,45 +68,41 @@ export function QiblaCompass({ isOpen, onClose }: QiblaCompassProps) {
                 </p>
                 <p className="text-xs text-[var(--color-muted)] mt-1">Face {getCardinalDirection(qiblaDirection)} to face the Kaaba</p>
               </div>
-              <div className="w-14 h-14 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center">
-                <span className="text-2xl">🕋</span>
-              </div>
+              <Suspense fallback={<div className="w-24 h-24 flex-shrink-0" />}>
+                <KaabaMiniView className="w-24 h-24 flex-shrink-0" />
+              </Suspense>
             </div>
           </div>
         </div>
 
-        {/* Map with arrow overlay */}
-        <div className="flex-1 px-4 pb-4">
-          <div className="relative w-full h-full rounded-lg overflow-hidden border border-[var(--color-border)]">
-            <iframe
-              src={mapSrc}
-              className="w-full h-full border-0"
-              title="Qibla Map"
-            />
-            {/* SVG overlay: red dot at center + arrow pointing toward Qibla */}
-            <svg
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              {/* Arrow line from center toward Qibla */}
-              <line
-                x1="50" y1="50"
-                x2={arrowEndX} y2={arrowEndY}
-                stroke="#dc2626"
-                strokeWidth="1.2"
-                strokeLinecap="round"
+        {/* Live compass */}
+        {heading.supported && (
+          <QiblaHeadingBar
+            rotation={heading.rotation}
+            calibrated={heading.calibrated}
+            unavailable={heading.unavailable}
+          />
+        )}
+
+        {/* Great-circle globe */}
+        <div className="flex-1 px-4 pb-4 min-h-[260px] flex">
+          <div className="relative flex-1 min-h-0 rounded-lg overflow-hidden border border-[var(--color-border)]">
+            <Suspense fallback={<div className="absolute inset-0" />}>
+              <QiblaGlobeView
+                data={globeData}
+                className="absolute inset-0"
+                fallback={
+                  <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
+                    <p className="text-sm text-[var(--color-muted)]">
+                      Face {Math.round(qiblaDirection)}° ({getCardinalDirection(qiblaDirection)}) from north.
+                    </p>
+                  </div>
+                }
               />
-              {/* Arrowhead */}
-              <polygon
-                points={`${arrowEndX},${arrowEndY} ${ax1},${ay1} ${ax2},${ay2}`}
-                fill="#dc2626"
-              />
-              {/* User location red dot with white border */}
-              <circle cx="50" cy="50" r="3" fill="#dc2626" stroke="white" strokeWidth="1" />
-              {/* Small "N" indicator at top */}
-              <text x="50" y="6" textAnchor="middle" fontSize="4" fontWeight="bold" fill="#6b7280">N</text>
-            </svg>
+            </Suspense>
+            <p className="absolute left-3 bottom-2.5 text-xs text-[var(--color-muted)] pointer-events-none">
+              Great-circle bearing · drag to rotate
+            </p>
           </div>
         </div>
       </div>

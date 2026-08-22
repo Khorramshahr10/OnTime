@@ -53,7 +53,14 @@ export interface Coordinates {
 
 export interface LocationData {
   coordinates: Coordinates;
+  /** Full display name, e.g. "Meade Boulevard, North Aurora". */
   cityName: string;
+  /**
+   * Just the settlement, e.g. "North Aurora". For places where the full name
+   * is too long to fit, such as the label on the qibla globe. Absent on
+   * locations saved before this field existed.
+   */
+  shortName?: string;
   countryCode?: string;
 }
 
