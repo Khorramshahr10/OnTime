@@ -87,7 +87,7 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
         varying vec3 vNormal;
         void main() {
           vUv = uv;
-          vNormal = normalize(normalMatrix * normal);
+          vNormal = normal;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -136,5 +136,16 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
     const worldSun = v3(normalize(latLonToVec3(latitude, longitude)));
     const localSun = worldSun.clone().applyQuaternion(this.earth.quaternion.clone().invert());
     this.earthMaterial.uniforms.sunDirection.value.copy(localSun);
+  }
+
+  /**
+   * Base3D.dispose() generically disposes each mesh's `.material.map`, but
+   * this earth's texture lives in a ShaderMaterial uniform instead — the
+   * generic path never sees it, so it would leak GPU memory on every
+   * Home-screen unmount otherwise.
+   */
+  dispose(): void {
+    (this.earthMaterial?.uniforms.dayMap.value as THREE.Texture | undefined)?.dispose();
+    super.dispose();
   }
 }
