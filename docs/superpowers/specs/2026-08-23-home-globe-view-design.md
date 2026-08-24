@@ -23,7 +23,7 @@ Today, `SunDomeCard` (a small 3D dome) and the prayer list (`PrayerTable`/`Islam
 | Onboarding placement | New `'homeView'` step in `OnboardingScreen`, shown right before onboarding completes (after location resolves/skips, before `onComplete`) |
 | Settings field | `homeView: 'globe' \| 'list'`, top-level on `Settings` (parallel to `designStyle`), default `'list'` |
 | Switching after onboarding | Persistent header icon toggle (next to the existing Qibla/Dashboard buttons) + the same choice exposed in `SettingsModal` |
-| Globe layout | Full-bleed background layer (same z-index pattern as the existing `GirihBackground`), with the **existing** header and countdown components rendered on top, given a transparent/floating style only in Globe mode. No new HUD components. |
+| Globe layout | Full-bleed background layer (same z-index pattern as the existing `GirihBackground`), with the **existing** header and countdown components rendered on top, given a **glow** style variant only in Globe mode: no card background/border, just light-on-dark text with a soft drop shadow for legibility over the scene. No new HUD components — same `CountdownTimer`/`IslamicCountdownTimer`, just a boxless style variant. Chosen over a frosted-glass alternative after comparing both in the design mockup (see Visual reference) — glow reads as more immersive/cinematic and was preferred |
 | List mode | Completely unchanged — `SunDomeCard` + `PrayerTable` stay exactly as they are today. Removing `SunDomeCard` from List mode is explicitly out of scope (see below). |
 | Earth base map | Reuses `buildEarthTexture()` from `earthTexture.ts` — same theme-tinted coastline texture already used by `QiblaGlobe` |
 | Day/night terminator | New `subSolarPoint(date)` pure function in `solarGeometry.ts`; a custom shader blends the day texture toward a **fixed, theme-independent** dark/cool tone on the night side (not a flat brightness multiply — see Component Design) |
@@ -215,8 +215,10 @@ const showGlobeLayer = isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSet
 // Inside the max-w-lg column:
 {!isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSettingsOpen && <SunDomeCard prayers={prayers} />}
 
-// Header: transparent/frosted background when isGlobeHome, solid otherwise (existing style, one conditional)
-// Countdown block: same treatment — a `floating` style variant (shadow instead of solid card background)
+// Header: icon buttons keep a subtle translucent circle background (needed as a tap-target affordance
+// over the scene) and fixed light-on-dark icon color when isGlobeHome, solid theme colors otherwise.
+// Countdown block: a `glow` style variant when isGlobeHome — no card background/border, light-on-dark
+// text with a soft drop shadow instead — vs. the normal solid `bg-[var(--color-card)]` card otherwise.
 // Prayer table block: only rendered when !isGlobeHome
 ```
 
