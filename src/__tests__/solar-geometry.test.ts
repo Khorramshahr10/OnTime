@@ -248,10 +248,16 @@ describe('subSolarPoint', () => {
   });
 
   it('wraps longitude to stay within [-180, 180]', () => {
-    const date = new Date(Date.UTC(2026, 2, 20, 23, 0, 0)); // 23:00 UTC → expect ~+165°, not +195°
+    const date = new Date(Date.UTC(2026, 2, 20, 23, 0, 0)); // 23:00 UTC → expect ~-165° (11 hours westward from noon), not -195° (unwrapped)
     const point = subSolarPoint(date);
     expect(point.longitude).toBeGreaterThanOrEqual(-180);
     expect(point.longitude).toBeLessThanOrEqual(180);
-    expect(point.longitude).toBeCloseTo(165, 0);
+    expect(point.longitude).toBeCloseTo(-165, 0);
+  });
+
+  it('matches Mecca longitude near solar noon', () => {
+    const date = new Date(Date.UTC(2026, 2, 20, 9, 20, 0)); // ~solar noon at Mecca (~09:20 UTC)
+    const point = subSolarPoint(date);
+    expect(point.longitude).toBeCloseTo(MECCA.longitude, 0); // Should be near +39.83°
   });
 });

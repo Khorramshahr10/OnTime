@@ -215,7 +215,7 @@ export function sunPath(
 export function subSolarPoint(date: Date): { latitude: number; longitude: number } {
   const latitude = solarDeclination(date);
   const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-  const longitude = normalizeLongitude((utcHours - 12) * 15);
+  const longitude = normalizeLongitude(-(utcHours - 12) * 15);
   return { latitude, longitude };
 }
 
