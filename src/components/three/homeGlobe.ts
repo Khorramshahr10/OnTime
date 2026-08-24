@@ -173,6 +173,7 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
           this.cloudMaterial.opacity = 1;
           this.cloudMaterial.needsUpdate = true;
         };
+        img.onerror = () => console.warn('cloud imagery decode failed');
         img.src = `data:image/jpeg;base64,${result.base64Jpeg}`;
       })
       .catch((err) => console.warn('cloud imagery unavailable', err));

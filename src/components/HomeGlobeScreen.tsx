@@ -5,6 +5,18 @@ const HomeGlobeView = lazy(() =>
 );
 
 /**
+ * Always-dark space backdrop, independent of the app's light/dark theme —
+ * the globe is meant to read as a night sky regardless of theme, the same
+ * reasoning that already justifies the fixed HUD colours in
+ * CountdownTimer/IslamicCountdownTimer. Used both as the wrapper's own
+ * background (visible while the WebGL canvas is transparent, per
+ * base3d.ts's `alpha: true` renderer) and as SceneHost's `fallback`, so a
+ * WebGL-unavailable device still shows an intentional dark scene instead of
+ * a blank rect.
+ */
+const SPACE_BACKDROP = 'radial-gradient(ellipse at 50% 40%, #0d1424 0%, #03050a 70%)';
+
+/**
  * Full-page ambient background for the Home Globe view: starfield, earth,
  * day/night terminator, live clouds. Purely visual — the header and
  * countdown HUD render on top of this as siblings in App.tsx, not inside it.
@@ -30,9 +42,13 @@ export function HomeGlobeScreen() {
   }, []);
 
   return (
-    <div className="absolute inset-0 z-0" aria-hidden="true">
+    <div className="absolute inset-0 z-0" aria-hidden="true" style={{ background: SPACE_BACKDROP }}>
       <Suspense fallback={null}>
-        <HomeGlobeView data={{ now }} style={{ display: 'block', width: '100%', height: '100%' }} />
+        <HomeGlobeView
+          data={{ now }}
+          style={{ display: 'block', width: '100%', height: '100%' }}
+          fallback={<div className="absolute inset-0" style={{ background: SPACE_BACKDROP }} />}
+        />
       </Suspense>
     </div>
   );

@@ -56,15 +56,27 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
       url: `${GIBS_URL}&TIME=${today}`,
       responseType: 'blob',
     });
+    if (!(response.status >= 200 && response.status < 300)) {
+      throw new Error(`GIBS request failed with status ${response.status}`);
+    }
     const base64Jpeg = response.data as string;
 
+    // Caching is best-effort: a failure here (disk full, permissions) must
+    // not discard the imagery we already fetched. Isolated in its own
+    // try/catch so it can't fall into the outer catch and get treated as a
+    // fetch failure (which would serve stale/procedural data instead of the
+    // fresh image already in hand).
     try {
-      await Filesystem.mkdir({ path: CLOUD_SUBDIR, directory: Directory.External, recursive: true });
-    } catch {
-      // Directory may already exist.
+      try {
+        await Filesystem.mkdir({ path: CLOUD_SUBDIR, directory: Directory.External, recursive: true });
+      } catch {
+        // Directory may already exist.
+      }
+      await Filesystem.writeFile({ path: CLOUD_PATH, data: base64Jpeg, directory: Directory.External });
+      await Preferences.set({ key: CLOUD_DATE_KEY, value: today });
+    } catch (err) {
+      console.warn('cloud imagery caching failed', err);
     }
-    await Filesystem.writeFile({ path: CLOUD_PATH, data: base64Jpeg, directory: Directory.External });
-    await Preferences.set({ key: CLOUD_DATE_KEY, value: today });
 
     return { base64Jpeg, date: today, source: 'fresh' };
   } catch {

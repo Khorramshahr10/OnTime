@@ -36,7 +36,7 @@ beforeEach(() => {
   mockMkdir.mockResolvedValue(undefined);
   mockWriteFile.mockResolvedValue(undefined);
   mockReadFile.mockRejectedValue(new Error('not found'));
-  mockHttpGet.mockResolvedValue({ data: 'freshbase64data' });
+  mockHttpGet.mockResolvedValue({ data: 'freshbase64data', status: 200 });
 });
 
 describe('getCloudImagery', () => {
@@ -87,5 +87,51 @@ describe('getCloudImagery', () => {
     const result = await getCloudImagery(NOW);
 
     expect(result).toEqual({ base64Jpeg: null, date: TODAY, source: 'procedural' });
+  });
+
+  it('treats a non-2xx response as a failure and does not poison the cache', async () => {
+    vi.mocked(Preferences.get).mockResolvedValue({ value: '2026-08-20' });
+    mockHttpGet.mockResolvedValue({ data: '<ServiceException>error</ServiceException>', status: 503 });
+    mockReadFile.mockResolvedValue({ data: 'stalebase64data' });
+
+    const result = await getCloudImagery(NOW);
+
+    expect(result).toEqual({ base64Jpeg: 'stalebase64data', date: '2026-08-20', source: 'cached' });
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(vi.mocked(Preferences.set)).not.toHaveBeenCalled();
+  });
+
+  it('falls back to procedural on a non-2xx response with no cache available', async () => {
+    mockHttpGet.mockResolvedValue({ data: 'not really an image', status: 500 });
+    mockReadFile.mockRejectedValue(new Error('not found'));
+
+    const result = await getCloudImagery(NOW);
+
+    expect(result).toEqual({ base64Jpeg: null, date: TODAY, source: 'procedural' });
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('still returns the freshly-fetched image when caching fails', async () => {
+    mockWriteFile.mockRejectedValue(new Error('disk full'));
+
+    const result = await getCloudImagery(NOW);
+
+    expect(result).toEqual({ base64Jpeg: 'freshbase64data', date: TODAY, source: 'fresh' });
+    expect(vi.mocked(Preferences.set)).not.toHaveBeenCalled();
+  });
+
+  it('still caches the date when mkdir fails because the directory already exists', async () => {
+    mockMkdir.mockRejectedValue(new Error('EEXIST'));
+
+    const result = await getCloudImagery(NOW);
+
+    expect(result).toEqual({ base64Jpeg: 'freshbase64data', date: TODAY, source: 'fresh' });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.objectContaining({ data: 'freshbase64data', directory: 'EXTERNAL' }),
+    );
+    expect(vi.mocked(Preferences.set)).toHaveBeenCalledWith({
+      key: 'ontime_cloud_imagery_date',
+      value: TODAY,
+    });
   });
 });
