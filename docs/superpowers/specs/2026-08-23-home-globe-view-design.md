@@ -27,10 +27,10 @@ Today, `SunDomeCard` (a small 3D dome) and the prayer list (`PrayerTable`/`Islam
 | List mode | Completely unchanged — `SunDomeCard` + `PrayerTable` stay exactly as they are today. Removing `SunDomeCard` from List mode is explicitly out of scope (see below). |
 | Earth base map | Reuses `buildEarthTexture()` from `earthTexture.ts` — same theme-tinted coastline texture already used by `QiblaGlobe` |
 | Day/night terminator | New `subSolarPoint(date)` pure function in `solarGeometry.ts`; a custom shader blends the day texture toward a **fixed, theme-independent** dark/cool tone on the night side (not a flat brightness multiply — see Component Design) |
-| Cloud data source | NASA GIBS — a **cloud-fraction/cloud-mask layer** (grayscale, not TrueColor), converted client-side to a white-with-alpha texture so the vector earth map shows through cloud gaps. Exact layer ID/endpoint confirmed during implementation planning (see Open Questions) |
-| Cloud caching | `@capacitor/filesystem` (already a dependency) caches the fetched image on disk; `@capacitor/preferences` stores only the small `{date, path}` metadata |
+| Cloud data source | **Revised after hands-on verification** (see below) — NASA GIBS' `VIIRS_SNPP_CorrectedReflectance_TrueColor` layer (a real photographic mosaic), with clouds extracted client-side via an HSV brightness/saturation heuristic — **not** a GIBS "cloud fraction" layer as originally assumed (verified to be a discrete scientific color-palette product, not a grayscale mask — see Verified facts) |
+| Cloud caching | `@capacitor/filesystem` (already a dependency) caches the raw fetched JPEG (~150KB at 1024×512) on disk; `@capacitor/preferences` stores only the small `{date, path}` metadata. The HSV cloud-extraction pass is cheap and re-run from the cached JPEG each time `HomeGlobe` builds — no separate processed-texture cache needed |
 | Cloud fallback chain | fresh fetch → same-day cached file → any-age cached file → procedural animated cloud shader (fully offline-safe) |
-| Network fallback | Try `fetch()` first; if the WebView blocks the GIBS request (CORS/mixed content), fall back to Capacitor's native HTTP bridge (`@capacitor/core`'s `CapacitorHttp`) |
+| Network fallback | Try `fetch()` first; verified GIBS sends `access-control-allow-origin: *`, so a plain `fetch()` should succeed from the WebView. Keep Capacitor's native HTTP bridge (`@capacitor/core`'s `CapacitorHttp`) as a defensive one-retry fallback for WebView-specific quirks (e.g. mixed-content policy) rather than an expected necessity |
 | WebGL exclusivity | `HomeGlobeScreen` is unmounted whenever the Qibla/Dashboard/Settings modal is open — the same rule `SunDomeCard` already follows at `App.tsx:238`, and for the same reason (no hidden live GL context under a modal) |
 | Header/HUD chrome in Globe mode | Fixed light-on-dark styling (translucent dark/frosted glass, near-white text) regardless of the user's chosen app theme — the backdrop is always a dark starfield, so theme-driven chrome (e.g. a light theme's dark-on-light header) would be unreadable over it. Only the accent color (toggle active state, seconds digit) still follows the theme's `primary`, so Globe mode still feels like *this* app in *this* theme, not a generic space screen. Validated visually via a Claude Design mockup with a live theme switcher (see below) |
 | New dependencies | None — `@capacitor/filesystem` is already installed; no weather/imagery npm package needed |
@@ -155,23 +155,35 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
 
 ### `src/services/cloudImagery.ts`
 
+**Verified facts** (checked by hand against the live GIBS service, 2026-08-23): a GIBS `Cloud_Fraction` product exists but renders as a discrete scientific color palette (purple/red/blue/green bins), not a grayscale mask — unsuitable for a simple luminance→alpha conversion. Instead this uses the **TrueColor photographic mosaic**, extracting clouds client-side:
+
+- **Endpoint** (confirmed working, returns `200` + `image/jpeg` + `access-control-allow-origin: *`):
+  `https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=VIIRS_SNPP_CorrectedReflectance_TrueColor&STYLES=&FORMAT=image/jpeg&HEIGHT=512&WIDTH=1024&SRS=EPSG:4326&BBOX=-180,-90,180,90&TIME=<YYYY-MM-DD>`
+- **Date**: the `/best/` path segment is GIBS' "best available" virtual layer — it auto-resolves gaps, so requesting the current UTC date works directly (verified both `TIME=<today>` and `TIME=<yesterday>` return complete `200` responses); no artificial staleness offset needed.
+- **Size**: `image/jpeg` at 1024×512 measured ~150KB (vs. ~1.1MB for the same request as `image/png`) — small enough to fetch daily on mobile data and cache without a size concern.
+- **Known limitation**: the daily TrueColor mosaic can have a visible swath/compositing gap (a dark wedge where satellite passes didn't overlap) depending on the date. The extraction heuristic below treats a dark gap as "no cloud detected" there — a graceful, non-crashing degradation, not a bug to engineer around. Documented as an accepted minor visual imperfection (this is a decorative feature, not a forecasting tool).
+
 ```ts
 export interface CloudImageResult {
-  texture: HTMLImageElement | string; // resolved path/data usable as a THREE texture source
-  date: string;                        // YYYY-MM-DD of the imagery
+  jpegBlob: Blob | null;   // raw cached/fetched photo; null only when source is 'procedural'
+  date: string;            // YYYY-MM-DD (UTC) of the imagery
   source: 'fresh' | 'cached' | 'procedural';
 }
 
 export async function getCloudImagery(now: Date): Promise<CloudImageResult>
+
+/** Extracts a white-RGBA cloud mask from a TrueColor photo via HSV thresholding. */
+export function extractCloudAlpha(image: HTMLImageElement): HTMLCanvasElement
 ```
 
 **Fallback chain**, in order:
-1. Cached file dated today → return it (`source: 'cached'`).
-2. Fetch today's GIBS mosaic (`fetch()`, falling back to `CapacitorHttp` on failure) → cache via `Filesystem.writeFile` (`Directory.Cache`) → store `{date, path}` in `Preferences` → return (`source: 'fresh'`).
+1. Cached file dated today (UTC) → return it (`source: 'cached'`).
+2. Fetch today's GIBS TrueColor mosaic (`fetch()`, falling back to `CapacitorHttp` on failure) → cache the raw JPEG via `Filesystem.writeFile` (`Directory.Cache`) → store `{date, path}` in `Preferences` → return (`source: 'fresh'`).
 3. Fetch fails (offline, CORS, GIBS down) → return any cached file regardless of age (`source: 'cached'`).
-4. No cache exists at all (first launch, offline) → return a sentinel telling `HomeGlobe` to render the procedural animated cloud shader instead (`source: 'procedural'`).
+4. No cache exists at all (first launch, offline) → return `{jpegBlob: null, source: 'procedural'}`, telling `HomeGlobe` to render the procedural animated cloud shader instead.
 
-The grayscale GIBS cloud-mask response is converted to a white-RGBA image (luminance → alpha) in a canvas pass before caching, so the stored file is already shell-ready.
+**`extractCloudAlpha` algorithm** (verified visually against a real GIBS photo — the extracted mask closely tracked the actual cloud swirls): for each pixel, convert RGB to HSV and compute
+`cloudScore = clamp01(max(0, v - 0.55) * max(0, 0.35 - s) * 12)` — bright, low-saturation pixels (clouds) score near 1; darker or more-saturated pixels (ocean, land, vegetation) score near 0. Output a same-size canvas painted white with alpha = `cloudScore * 255`. This runs once per fresh/cached JPEG load (cheap — a single canvas pixel pass), not cached separately; `HomeGlobe` calls it each time it builds the cloud shell.
 
 ### `src/components/HomeGlobeScreen.tsx`
 
@@ -318,13 +330,11 @@ No new e2e infrastructure — this project's testing pattern is unit tests plus 
 - **Swipe-gesture switching** between Globe and List — the header-toggle approach was chosen instead (see Decisions).
 - **A temperature/conditions weather widget** — "live weather" was clarified to mean cloud cover imagery specifically, not a forecast UI element.
 - **Live cloud imagery more frequent than daily** — would require a keyed API (OpenWeatherMap tiles) and tile-stitching; rejected in favor of no-key NASA GIBS.
-- **Real satellite cloud *photography*** (as opposed to a cloud-fraction mask) — TrueColor imagery has no alpha channel and would paint over the theme-tinted vector map; ruled out during design (see Decisions).
+- **Using TrueColor imagery as the earth's base map itself** — it has no alpha channel and would paint over the theme-tinted vector map if used directly. It's still the cloud data *source*, but only via the client-side HSV extraction in `cloudImagery.ts` (see Decisions) — the earth's base map stays the vector coastline texture.
 - **City-lights night texture** — a nice-to-have some "living earth" globes add on the night side; not requested, adds another texture asset to manage.
 
 ---
 
 ## Open questions
 
-One item needs to be pinned down during implementation planning, not here — it's a concrete lookup, not a design fork:
-
-- **Exact GIBS layer ID and endpoint.** Confirm a specific cloud-fraction/cloud-mask layer from the GIBS catalog that (a) is served in EPSG:4326, (b) supports a single-image `GetMap`/Snapshots request at ~2048×1024 rather than requiring WMTS tile-stitching, and (c) has a documented update cadence. Also verify with `curl -I` that the endpoint sends CORS headers permissive enough for a Capacitor WebView `fetch()`, so the `CapacitorHttp` fallback path is confirmed necessary (or not) before writing it.
+None — the GIBS endpoint, layer, format and CORS behavior were verified by hand against the live service on 2026-08-23 (see `cloudImagery.ts`'s Component design section); all decisions are locked in.
