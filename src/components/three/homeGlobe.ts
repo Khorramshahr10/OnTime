@@ -1,6 +1,7 @@
 import { Base3D, THREE } from './base3d';
 import { buildEarthTexture } from './earthTexture';
 import { subSolarPoint, latLonToVec3, normalize, type Vec3 } from '../../services/solarGeometry';
+import { getCloudImagery, extractCloudAlpha } from '../../services/cloudImagery';
 
 export interface HomeGlobeData {
   now: Date;
@@ -30,12 +31,17 @@ function placeholderTexture(): THREE.DataTexture {
 export class HomeGlobe extends Base3D<HomeGlobeData> {
   private earth!: THREE.Mesh;
   private earthMaterial!: THREE.ShaderMaterial;
+  private cloudMesh!: THREE.Mesh;
+  private cloudMaterial!: THREE.MeshBasicMaterial;
   private textureToken = 0;
+  private cloudToken = 0;
 
   protected build(): void {
     this.camera.position.set(0, 0.15, 3.4);
     this.buildStarfield();
     this.buildEarth();
+    this.buildCloudShell();
+    this.refreshClouds();
   }
 
   protected configureControls(): void {
@@ -46,6 +52,7 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
 
   protected tick(seconds: number): void {
     this.earth.rotation.y = seconds * EARTH_SPIN_SPEED;
+    this.cloudMesh.rotation.y = seconds * EARTH_SPIN_SPEED;
     this.updateSunDirection();
   }
 
@@ -128,6 +135,47 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
         this.earthMaterial.needsUpdate = true;
       })
       .catch((err) => console.warn('earth texture unavailable', err));
+  }
+
+  private buildCloudShell(): void {
+    this.cloudMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(1.012, 96, 64), this.cloudMaterial);
+    this.scene.add(this.cloudMesh);
+  }
+
+  /**
+   * Fetches (or reuses the day's cached) real satellite imagery and extracts
+   * a cloud-only alpha mask from it. Called once per mount — a decorative
+   * feature doesn't need to re-check within a session; the next app launch
+   * re-checks naturally. Fails silently (clouds just stay invisible) since
+   * the globe must never block or error on network conditions.
+   */
+  private refreshClouds(): void {
+    const token = ++this.cloudToken;
+    getCloudImagery(this.data.now)
+      .then((result) => {
+        if (token !== this.cloudToken) return;
+        if (result.source === 'procedural' || !result.base64Jpeg) {
+          this.cloudMaterial.opacity = 0;
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          if (token !== this.cloudToken) return;
+          const canvas = extractCloudAlpha(img);
+          const texture = new THREE.CanvasTexture(canvas);
+          this.cloudMaterial.map?.dispose();
+          this.cloudMaterial.map = texture;
+          this.cloudMaterial.opacity = 1;
+          this.cloudMaterial.needsUpdate = true;
+        };
+        img.src = `data:image/jpeg;base64,${result.base64Jpeg}`;
+      })
+      .catch((err) => console.warn('cloud imagery unavailable', err));
   }
 
   /** Recompute the sun direction in the fixed geographic object-space frame. */
