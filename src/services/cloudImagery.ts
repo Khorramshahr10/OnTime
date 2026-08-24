@@ -52,7 +52,7 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
   }
 
   try {
-    const response = await CapacitorHttp.get({ url: `${GIBS_URL}&TIME=${today}` });
+    const response = await CapacitorHttp.get({ url: `${GIBS_URL}&TIME=${today}`, responseType: 'blob' });
     const base64Jpeg = response.data as string;
 
     try {
