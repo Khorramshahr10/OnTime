@@ -3,6 +3,7 @@
 **Date:** 2026-08-23
 **Status:** Approved — ready for implementation plan
 **Scope:** Let the user choose, at onboarding (and later in Settings), between two home screens: the existing prayer **List** or a new full-page, immersive **Globe** — starfield, a real-time day/night earth, and live cloud cover from NASA satellite imagery. Supersedes the small "Today's Sky" dome card, which currently sits awkwardly above the prayer list on every launch.
+**Visual reference:** a high-fidelity mockup with a live theme switcher and a HUD-treatment comparison — [Home Globe View](https://claude.ai/code/artifact/2bf49be7-f4bb-44fe-a862-65920ab10820) — informed the header/HUD chrome decision below.
 
 ---
 
@@ -31,6 +32,7 @@ Today, `SunDomeCard` (a small 3D dome) and the prayer list (`PrayerTable`/`Islam
 | Cloud fallback chain | fresh fetch → same-day cached file → any-age cached file → procedural animated cloud shader (fully offline-safe) |
 | Network fallback | Try `fetch()` first; if the WebView blocks the GIBS request (CORS/mixed content), fall back to Capacitor's native HTTP bridge (`@capacitor/core`'s `CapacitorHttp`) |
 | WebGL exclusivity | `HomeGlobeScreen` is unmounted whenever the Qibla/Dashboard/Settings modal is open — the same rule `SunDomeCard` already follows at `App.tsx:238`, and for the same reason (no hidden live GL context under a modal) |
+| Header/HUD chrome in Globe mode | Fixed light-on-dark styling (translucent dark/frosted glass, near-white text) regardless of the user's chosen app theme — the backdrop is always a dark starfield, so theme-driven chrome (e.g. a light theme's dark-on-light header) would be unreadable over it. Only the accent color (toggle active state, seconds digit) still follows the theme's `primary`, so Globe mode still feels like *this* app in *this* theme, not a generic space screen. Validated visually via a Claude Design mockup with a live theme switcher (see below) |
 | New dependencies | None — `@capacitor/filesystem` is already installed; no weather/imagery npm package needed |
 
 ---
