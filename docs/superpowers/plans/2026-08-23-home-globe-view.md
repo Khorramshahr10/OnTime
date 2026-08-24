@@ -306,11 +306,11 @@ describe('subSolarPoint', () => {
   });
 
   it('wraps longitude to stay within [-180, 180]', () => {
-    const date = new Date(Date.UTC(2026, 2, 20, 23, 0, 0)); // 23:00 UTC → expect ~+165°, not +195°
+    const date = new Date(Date.UTC(2026, 2, 20, 23, 0, 0)); // 23:00 UTC → expect ~-165°, not -195°
     const point = subSolarPoint(date);
     expect(point.longitude).toBeGreaterThanOrEqual(-180);
     expect(point.longitude).toBeLessThanOrEqual(180);
-    expect(point.longitude).toBeCloseTo(165, 0);
+    expect(point.longitude).toBeCloseTo(-165, 0);
   });
 });
 ```
