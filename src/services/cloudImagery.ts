@@ -53,6 +53,9 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
 
   try {
     const response = await CapacitorHttp.get({ url: `${GIBS_URL}&TIME=${today}`, responseType: 'blob' });
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`GIBS returned ${response.status}`);
+    }
     const base64Jpeg = response.data as string;
 
     try {

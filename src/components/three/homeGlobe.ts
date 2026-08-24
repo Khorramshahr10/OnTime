@@ -45,9 +45,12 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
   }
 
   protected configureControls(): void {
-    this.controls.autoRotate = false; // the earth spins on its own in tick(); autoRotate would double it
-    this.controls.minDistance = 2;
-    this.controls.maxDistance = 6;
+    // Ambient background view, not interactive: on the real mobile target the
+    // full-screen content column always sits above the canvas, so drag-to-orbit
+    // is unreachable anyway. Disabling outright keeps behavior consistent
+    // between that (real) case and a wide desktop browser where it would
+    // otherwise still be draggable.
+    this.controls.enabled = false;
   }
 
   protected tick(seconds: number): void {
@@ -172,6 +175,9 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
           this.cloudMaterial.map = texture;
           this.cloudMaterial.opacity = 1;
           this.cloudMaterial.needsUpdate = true;
+        };
+        img.onerror = () => {
+          console.warn('cloud image failed to decode');
         };
         img.src = `data:image/jpeg;base64,${result.base64Jpeg}`;
       })

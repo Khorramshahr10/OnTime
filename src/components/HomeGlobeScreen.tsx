@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 const HomeGlobeView = lazy(() =>
   import('./three/Scenes').then((m) => ({ default: m.HomeGlobeView }))
@@ -29,10 +29,18 @@ export function HomeGlobeScreen() {
     return () => clearTimeout(timeout);
   }, []);
 
+  // Memoized so the scene only re-renders/re-ticks on the per-minute cadence
+  // above, not on every second-tick re-render from the parent App component.
+  const data = useMemo(() => ({ now }), [now]);
+
   return (
-    <div className="absolute inset-0 z-0" aria-hidden="true">
+    <div
+      className="absolute inset-0 z-0"
+      style={{ background: 'radial-gradient(ellipse at 50% 40%, #0d1424 0%, #03050a 100%)' }}
+      aria-hidden="true"
+    >
       <Suspense fallback={null}>
-        <HomeGlobeView data={{ now }} style={{ display: 'block', width: '100%', height: '100%' }} />
+        <HomeGlobeView data={data} style={{ display: 'block', width: '100%', height: '100%' }} fallback={null} />
       </Suspense>
     </div>
   );

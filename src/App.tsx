@@ -123,7 +123,7 @@ function App() {
   const isGlobeHome = settings.homeView === 'globe';
   const showGlobeLayer = isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSettingsOpen;
   const headerGlowVars = isGlobeHome
-    ? ({ '--color-muted': 'rgba(245,246,248,0.65)', '--color-text': 'rgba(245,246,248,0.95)' } as React.CSSProperties)
+    ? ({ '--color-muted': 'rgba(245,246,248,0.6)', '--color-text': 'rgba(245,246,248,0.95)' } as React.CSSProperties)
     : undefined;
   const headerGlowBg: React.CSSProperties | undefined = isGlobeHome
     ? { background: 'linear-gradient(to bottom, rgba(3,5,10,0.5), transparent)', backdropFilter: 'blur(6px)' }
@@ -196,6 +196,7 @@ function App() {
                   border: '1px solid color-mix(in srgb, var(--color-primary) 15%, transparent)',
                 }}
                 aria-label={isGlobeHome ? 'Switch to list view' : 'Switch to globe view'}
+                aria-pressed={isGlobeHome}
               >
                 {isGlobeHome ? (
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="1.6">
@@ -253,6 +254,7 @@ function App() {
                 onClick={() => updateHomeView(isGlobeHome ? 'list' : 'globe')}
                 className="p-2 rounded-full hover:bg-[var(--color-card)] transition-colors"
                 aria-label={isGlobeHome ? 'Switch to list view' : 'Switch to globe view'}
+                aria-pressed={isGlobeHome}
               >
                 {isGlobeHome ? (
                   <svg className="w-5 h-5 text-[var(--color-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
