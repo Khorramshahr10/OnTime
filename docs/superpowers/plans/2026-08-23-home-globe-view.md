@@ -524,7 +524,11 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
   }
 
   try {
-    const response = await CapacitorHttp.get({ url: `${GIBS_URL}&TIME=${today}` });
+    // responseType: 'blob' matters here — GIBS returns binary JPEG, not text/JSON.
+    // Omitting it (as athanService.ts's downloadAthan correctly does NOT for its
+    // own binary MP3 fetch) makes CapacitorHttp's native layer decode the response
+    // as text on both Android and iOS, corrupting the image bytes.
+    const response = await CapacitorHttp.get({ url: `${GIBS_URL}&TIME=${today}`, responseType: 'blob' });
     const base64Jpeg = response.data as string;
 
     try {
