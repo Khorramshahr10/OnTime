@@ -87,7 +87,7 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
         varying vec3 vNormal;
         void main() {
           vUv = uv;
-          vNormal = normalize(normalMatrix * normal);
+          vNormal = normalize(normal);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -130,11 +130,15 @@ export class HomeGlobe extends Base3D<HomeGlobeData> {
       .catch((err) => console.warn('earth texture unavailable', err));
   }
 
-  /** Recompute the sun direction in the earth mesh's current (spinning) local frame. */
+  /** Recompute the sun direction in the fixed geographic object-space frame. */
   private updateSunDirection(): void {
     const { latitude, longitude } = subSolarPoint(this.data.now);
-    const worldSun = v3(normalize(latLonToVec3(latitude, longitude)));
-    const localSun = worldSun.clone().applyQuaternion(this.earth.quaternion.clone().invert());
-    this.earthMaterial.uniforms.sunDirection.value.copy(localSun);
+    const sun = v3(normalize(latLonToVec3(latitude, longitude)));
+    this.earthMaterial.uniforms.sunDirection.value.copy(sun);
+  }
+
+  dispose(): void {
+    this.earthMaterial?.uniforms.dayMap.value?.dispose();
+    super.dispose();
   }
 }
