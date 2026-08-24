@@ -28,6 +28,13 @@ vi.mock('../components/HomeGlobeScreen', () => ({
   HomeGlobeScreen: () => <div data-testid="home-globe-screen" />,
 }));
 
+// jsdom has no WebGL; stand in for the three.js layer so SunDomeCard's lazy
+// Scenes import doesn't probe canvas getContext() and print noisy warnings
+// (mirrors sun-dome-card.test.tsx's mock).
+vi.mock('../components/three/Scenes', () => ({
+  SunDomeView: () => <div data-testid="sun-dome" />,
+}));
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -123,5 +130,25 @@ describe('User story: I can switch between List and Globe home views', () => {
     await user.click(qiblaBtn);
 
     expect(screen.queryByTestId('home-globe-screen')).not.toBeInTheDocument();
+  });
+
+  it('portals the location map popup outside the header in Globe mode, so it does not inherit the glow HUD text colors', async () => {
+    const user = userEvent.setup();
+
+    let result: ReturnType<typeof renderApp> | undefined;
+    await act(async () => {
+      result = renderApp({ homeView: 'globe' });
+    });
+    await screen.findByTestId('home-globe-screen');
+    const { container } = result!;
+
+    await user.click(screen.getByText('Toronto'));
+
+    const openInMaps = await screen.findByText('Open in Maps');
+    const header = container.querySelector('header');
+    expect(header).not.toBeNull();
+    expect(header?.contains(openInMaps)).toBe(false);
+    expect(container.contains(openInMaps)).toBe(false);
+    expect(document.body.contains(openInMaps)).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from '../context/LocationContext';
 
 interface LocationDisplayProps {
@@ -46,8 +47,11 @@ export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
         )}
       </button>
 
-      {/* Map Popup */}
-      {showMap && (
+      {/* Map Popup — portaled to document.body so it escapes the header's
+          local CSS-variable overrides (e.g. the Home Globe glow HUD) and
+          resolves --color-text/--color-muted from the theme's actual root
+          definitions instead. */}
+      {showMap && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={() => setShowMap(false)}
@@ -93,7 +97,8 @@ export function LocationDisplay({ onRefresh }: LocationDisplayProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
