@@ -45,7 +45,12 @@ describe('getCloudImagery', () => {
 
     expect(result).toEqual({ base64Jpeg: 'freshbase64data', date: TODAY, source: 'fresh' });
     expect(mockHttpGet).toHaveBeenCalledTimes(1);
-    expect(mockHttpGet.mock.calls[0][0].url).toContain(`TIME=${TODAY}`);
+    expect(mockHttpGet.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(`TIME=${TODAY}`),
+        responseType: 'blob',
+      }),
+    );
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.objectContaining({ data: 'freshbase64data', directory: 'EXTERNAL' }),
     );
