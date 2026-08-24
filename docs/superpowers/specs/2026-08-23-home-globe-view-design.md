@@ -28,9 +28,9 @@ Today, `SunDomeCard` (a small 3D dome) and the prayer list (`PrayerTable`/`Islam
 | Earth base map | Reuses `buildEarthTexture()` from `earthTexture.ts` — same theme-tinted coastline texture already used by `QiblaGlobe` |
 | Day/night terminator | New `subSolarPoint(date)` pure function in `solarGeometry.ts`; a custom shader blends the day texture toward a **fixed, theme-independent** dark/cool tone on the night side (not a flat brightness multiply — see Component Design) |
 | Cloud data source | **Revised after hands-on verification** (see below) — NASA GIBS' `VIIRS_SNPP_CorrectedReflectance_TrueColor` layer (a real photographic mosaic), with clouds extracted client-side via an HSV brightness/saturation heuristic — **not** a GIBS "cloud fraction" layer as originally assumed (verified to be a discrete scientific color-palette product, not a grayscale mask — see Verified facts) |
-| Cloud caching | `@capacitor/filesystem` (already a dependency) caches the raw fetched JPEG (~150KB at 1024×512) on disk; `@capacitor/preferences` stores only the small `{date, path}` metadata. The HSV cloud-extraction pass is cheap and re-run from the cached JPEG each time `HomeGlobe` builds — no separate processed-texture cache needed |
+| Cloud caching | Follows `athanService.ts`'s existing download-and-cache pattern exactly, for consistency: `CapacitorHttp.get({url, responseType: 'blob'})` → `Filesystem.mkdir` (best-effort) + `Filesystem.writeFile` to a **fixed filename** `cloud-imagery/latest.jpg` under `Directory.External` (overwritten on each successful fetch, so storage never grows); `@capacitor/preferences` stores just the cached date string under `ontime_cloud_imagery_date`. The HSV cloud-extraction pass is cheap and re-run from the cached JPEG each time `HomeGlobe` builds — no separate processed-texture cache needed |
 | Cloud fallback chain | fresh fetch → same-day cached file → any-age cached file → procedural animated cloud shader (fully offline-safe) |
-| Network fallback | Try `fetch()` first; verified GIBS sends `access-control-allow-origin: *`, so a plain `fetch()` should succeed from the WebView. Keep Capacitor's native HTTP bridge (`@capacitor/core`'s `CapacitorHttp`) as a defensive one-retry fallback for WebView-specific quirks (e.g. mixed-content policy) rather than an expected necessity |
+| Network client | `CapacitorHttp` unconditionally (not a plain `fetch()` with a fallback) — matches `athanService.ts`'s established convention for downloading external resources, and works uniformly on native and web. Verified GIBS also sends `access-control-allow-origin: *`, so this isn't working around a CORS problem, just following the codebase's existing pattern |
 | WebGL exclusivity | `HomeGlobeScreen` is unmounted whenever the Qibla/Dashboard/Settings modal is open — the same rule `SunDomeCard` already follows at `App.tsx:238`, and for the same reason (no hidden live GL context under a modal) |
 | Header/HUD chrome in Globe mode | Fixed light-on-dark styling (translucent dark/frosted glass, near-white text) regardless of the user's chosen app theme — the backdrop is always a dark starfield, so theme-driven chrome (e.g. a light theme's dark-on-light header) would be unreadable over it. Only the accent color (toggle active state, seconds digit) still follows the theme's `primary`, so Globe mode still feels like *this* app in *this* theme, not a generic space screen. Validated visually via a Claude Design mockup with a live theme switcher (see below) |
 | New dependencies | None — `@capacitor/filesystem` is already installed; no weather/imagery npm package needed |
@@ -177,9 +177,9 @@ export function extractCloudAlpha(image: HTMLImageElement): HTMLCanvasElement
 ```
 
 **Fallback chain**, in order:
-1. Cached file dated today (UTC) → return it (`source: 'cached'`).
-2. Fetch today's GIBS TrueColor mosaic (`fetch()`, falling back to `CapacitorHttp` on failure) → cache the raw JPEG via `Filesystem.writeFile` (`Directory.Cache`) → store `{date, path}` in `Preferences` → return (`source: 'fresh'`).
-3. Fetch fails (offline, CORS, GIBS down) → return any cached file regardless of age (`source: 'cached'`).
+1. `Preferences` says today (UTC) is already cached → read `cloud-imagery/latest.jpg` via `Filesystem.readFile` and return it (`source: 'cached'`).
+2. Otherwise fetch today's GIBS TrueColor mosaic via `CapacitorHttp.get({url, responseType: 'blob'})` → `Filesystem.mkdir` (best-effort) + `Filesystem.writeFile` the base64 JPEG to `cloud-imagery/latest.jpg` under `Directory.External` → `Preferences.set` the date → return (`source: 'fresh'`).
+3. Fetch fails (offline, GIBS down) but a `Filesystem.readFile` of `cloud-imagery/latest.jpg` still succeeds (from a previous day) → return it regardless of age (`source: 'cached'`).
 4. No cache exists at all (first launch, offline) → return `{jpegBlob: null, source: 'procedural'}`, telling `HomeGlobe` to render the procedural animated cloud shader instead.
 
 **`extractCloudAlpha` algorithm** (verified visually against a real GIBS photo — the extracted mask closely tracked the actual cloud swirls): for each pixel, convert RGB to HSV and compute
@@ -293,8 +293,7 @@ User taps header toggle → updateHomeView(other value) → App.tsx swaps layers
 
 | Failure | Behavior |
 |---|---|
-| GIBS fetch fails (offline, DNS, 5xx) | `cloudImagery.ts` falls through to any cached file, then to the procedural shader. Globe never blocks or shows an error state. |
-| WebView blocks `fetch()` (CORS/mixed content) | Retry once via `CapacitorHttp`; if that also fails, treat as a fetch failure (see above) |
+| GIBS fetch fails (offline, DNS, 5xx, `CapacitorHttp` throws) | `cloudImagery.ts` falls through to any cached file, then to the procedural shader. Globe never blocks or shows an error state. |
 | `Filesystem.writeFile` fails (disk full, permissions) | Log and skip caching for this session; still render the freshly-fetched texture in memory, just re-fetch next launch |
 | WebGL unavailable (locked-down WebView) | `SceneHost`'s existing `fallback` prop covers this — same as `QiblaGlobeView`. `HomeGlobeScreen` should pass a plain CSS starfield-gradient `fallback` so Globe mode still looks intentional, not broken |
 | `subSolarPoint` given an invalid `Date` | Not defensively handled — `now` is always `new Date()` from a live ticker, same trust level as the rest of `solarGeometry.ts` |
@@ -308,7 +307,7 @@ User taps header toggle → updateHomeView(other value) → App.tsx swaps layers
 **Unit tests:**
 
 - `src/__tests__/solar-geometry.test.ts` — add cases for `subSolarPoint`: known date/time → expected lat/lon within tolerance; longitude wraps correctly across the ±180° boundary; declination matches `solarDeclination` output exactly (shared code path).
-- `src/__tests__/cloud-imagery.test.ts` — mock `fetch`/`Filesystem`/`Preferences`: fresh fetch caches and returns `'fresh'`; same-day cache short-circuits the fetch; fetch failure falls back to stale cache; no cache and fetch failure returns `'procedural'`.
+- `src/__tests__/cloud-imagery.test.ts` — mock `CapacitorHttp`/`Filesystem`/`Preferences` (the existing `src/test/setup.ts` already stubs `Filesystem` and `Preferences` globally): fresh fetch caches and returns `'fresh'`; same-day cache short-circuits the fetch; fetch failure falls back to stale cache; no cache and fetch failure returns `'procedural'`.
 - `src/__tests__/home-view-settings.test.ts` — default is `'list'` for a fresh install; a saved `'globe'` value survives `loadSettings`'s merge; `updateHomeView` persists correctly (same shape as the existing `design-switching.test.tsx` for `designStyle`).
 
 **Manual device smoke (GrapheneOS Pixel 6 Pro):**
