@@ -34,3 +34,9 @@ android/build/
 android/capacitor-cordova-android-plugins/build/
 
 .worktrees/
+
+# Local dev scratch + tool runtime state (not part of the app)
+.superpowers/
+lab.html
+lab.tsx
+notifiationsvg.svg

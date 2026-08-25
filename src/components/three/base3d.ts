@@ -133,6 +133,11 @@ export abstract class Base3D<TData = unknown> {
     return this.adjusted;
   }
 
+  /** True after dispose() — async work must check this before touching GL state. */
+  protected isDisposed(): boolean {
+    return this.disposed;
+  }
+
   /** Put the camera back where it started and hand control back to the app. */
   resetView(): void {
     if (!this.homeCamera || !this.homeTarget) return;

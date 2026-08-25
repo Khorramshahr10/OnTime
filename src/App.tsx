@@ -143,12 +143,12 @@ function App() {
         </>
       )}
 
-      {showGlobeLayer && <HomeGlobeScreen />}
+      {showGlobeLayer && <HomeGlobeScreen prayers={prayers} />}
 
-      <div className="max-w-lg mx-auto w-full flex-1 overflow-y-auto relative z-10">
-{/* Top Bar - sticky below status bar */}
+      <div className={`max-w-lg mx-auto w-full flex-1 relative z-10 ${isGlobeHome ? 'pointer-events-none' : 'overflow-y-auto'}`}>
+        {/* Top Bar - sticky below status bar */}
         {isIslamic ? (
-          <header className="sticky top-0 z-40 safe-area-top px-5 pt-2 pb-3.5 flex items-center justify-between" style={{ ...headerGlowVars, ...(headerGlowBg ?? { background: 'var(--color-background)' }) }}>
+          <header className={`sticky top-0 z-40 safe-area-top px-5 pt-2 pb-3.5 flex items-center justify-between ${isGlobeHome ? 'pointer-events-auto' : ''}`} style={{ ...headerGlowVars, ...(headerGlowBg ?? { background: 'var(--color-background)' }) }}>
             {/* Settings */}
             <button
               onClick={() => setIsSettingsOpen(true)}
@@ -227,7 +227,7 @@ function App() {
             </div>
           </header>
         ) : (
-          <header className={`sticky top-0 z-40 safe-area-top px-4 pt-2 pb-3 flex items-center justify-between ${isGlobeHome ? '' : 'bg-[var(--color-background)]'}`} style={{ ...headerGlowVars, ...headerGlowBg }}>
+          <header className={`sticky top-0 z-40 safe-area-top px-4 pt-2 pb-3 flex items-center justify-between ${isGlobeHome ? 'pointer-events-auto' : 'bg-[var(--color-background)]'}`} style={{ ...headerGlowVars, ...headerGlowBg }}>
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 -ml-2 rounded-full hover:bg-[var(--color-card)] transition-colors"

@@ -1,0 +1,13 @@
+diff --git a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
+index d4a84f6..c64aa3b 100644
+--- a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
++++ b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
+@@ -321,7 +321,7 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
+     _defineProperty(_this, "minLevel", void 0);
+     _defineProperty(_this, "maxLevel", void 0);
+     _defineProperty(_this, "thresholds", _toConsumableArray(new Array(30)).map(function (_, idx) {
+-      return 8 / Math.pow(2, idx);
++      return [100, 90, 80, 70, 60, 0.2, 0.1, 0.06][idx] || 0.0001;
+     }));
+     // in terms of radius units
+     _defineProperty(_this, "curvatureResolution", 5);

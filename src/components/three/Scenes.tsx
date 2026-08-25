@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import type { Base3D } from './base3d';
+import { useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { needsRelativePosition } from '../../utils/layout';
 import { SunDome, type SunDomeData } from './sunDome';
 import { QiblaGlobe, type QiblaGlobeData } from './qiblaGlobe';
@@ -11,6 +10,15 @@ import { KaabaMini } from './kaabaMini';
  * through this module, so lazily importing it keeps the renderer out of the
  * startup bundle.
  */
+
+/** Structural contract a scene class must satisfy — Base3D and globe.gl-backed
+ *  views both conform to it. */
+export interface SceneView<T> {
+  mount(): void;
+  update(data: T): void;
+  dispose(): void;
+  resetView(): void;
+}
 
 /**
  * Whether this device can give us a GL context at all. A property of the
@@ -30,20 +38,25 @@ function supportsWebGL(): boolean {
 }
 
 interface SceneHostProps<T> {
-  Scene: new (host: HTMLElement, data: T) => Base3D<T>;
+  Scene: new (host: HTMLElement, data: T) => SceneView<T>;
   data: T;
   className?: string;
   style?: CSSProperties;
   /** Shown instead of the canvas if WebGL is unavailable. */
   fallback?: React.ReactNode;
+  /** A primary action button, always visible (e.g. "My location"). */
+  primaryAction?: { label: string; run: (view: SceneView<T>) => void };
+  /** Called with the mounted view, so a parent can set callbacks on it. */
+  onView?: (view: SceneView<T>) => void;
 }
 
-function SceneHost<T>({ Scene, data, className, style, fallback = null }: SceneHostProps<T>) {
+function SceneHost<T>({ Scene, data, className, style, fallback = null, primaryAction, onView }: SceneHostProps<T>) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<Base3D<T> | null>(null);
+  const viewRef = useRef<SceneView<T> | null>(null);
   const dataRef = useRef(data);
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
   const supported = supportsWebGL();
-  const [adjusted, setAdjusted] = useState(false);
 
   const reset = useCallback(() => {
     viewRef.current?.resetView();
@@ -53,10 +66,9 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null }: SceneH
     const host = hostRef.current;
     if (!host || !supported) return;
 
-    let view: Base3D<T>;
+    let view: SceneView<T>;
     try {
       view = new Scene(host, dataRef.current);
-      view.onAdjustedChange = setAdjusted;
       view.mount();
     } catch (err) {
       // Locked-down webviews can still refuse a context after probing clean.
@@ -65,6 +77,7 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null }: SceneH
     }
 
     viewRef.current = view;
+    onViewRef.current?.(view);
     return () => {
       viewRef.current = null;
       view.dispose();
@@ -87,16 +100,26 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null }: SceneH
   return (
     <div className={className} style={addRelative ? { position: 'relative', ...style } : style}>
       <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} aria-hidden="true" />
-      {adjusted && (
+      <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+        {primaryAction && (
+          <button
+            onClick={() => viewRef.current && primaryAction.run(viewRef.current)}
+            className="rounded-full px-3 py-1.5 text-xs font-medium
+                       bg-[var(--color-card)] text-[var(--color-muted)]
+                       border border-[var(--color-border)] shadow-sm"
+          >
+            {primaryAction.label}
+          </button>
+        )}
         <button
           onClick={reset}
-          className="absolute top-2 right-2 z-10 rounded-full px-3 py-1.5 text-xs font-medium
+          className="rounded-full px-3 py-1.5 text-xs font-medium
                      bg-[var(--color-card)] text-[var(--color-muted)]
                      border border-[var(--color-border)] shadow-sm"
         >
           Reset view
         </button>
-      )}
+      </div>
     </div>
   );
 }
@@ -119,8 +142,17 @@ export function HomeGlobeView(props: {
   className?: string;
   style?: CSSProperties;
   fallback?: React.ReactNode;
+  onView?: (view: HomeGlobe) => void;
 }) {
-  return <SceneHost Scene={HomeGlobe} {...props} />;
+  const { onView, ...rest } = props;
+  return (
+    <SceneHost
+      Scene={HomeGlobe}
+      {...rest}
+      onView={onView as unknown as (view: SceneView<HomeGlobeData>) => void}
+      primaryAction={{ label: 'My location', run: (view) => (view as HomeGlobe).focusOnLocation() }}
+    />
+  );
 }
 
 export function KaabaMiniView(props: { className?: string; style?: CSSProperties }) {

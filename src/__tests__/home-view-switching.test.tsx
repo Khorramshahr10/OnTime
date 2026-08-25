@@ -151,4 +151,35 @@ describe('User story: I can switch between List and Globe home views', () => {
     expect(container.contains(openInMaps)).toBe(false);
     expect(document.body.contains(openInMaps)).toBe(true);
   });
+
+  it('stops the full-screen content column from swallowing touches in Globe mode', async () => {
+    // The globe canvas sits below the content column in stacking order; a
+    // column that captures pointer events would make one-finger spin and
+    // pinch zoom dead. It must be pointer-events-none, with the header
+    // re-enabled so its buttons stay tappable.
+    let result: ReturnType<typeof renderApp> | undefined;
+    await act(async () => {
+      result = renderApp({ homeView: 'globe' });
+    });
+    await screen.findByTestId('home-globe-screen');
+
+    const column = result!.container.querySelector('.max-w-lg');
+    expect(column).not.toBeNull();
+    expect(column?.className).toContain('pointer-events-none');
+    expect(column?.className).not.toContain('overflow-y-auto');
+
+    const header = result!.container.querySelector('header');
+    expect(header?.className).toContain('pointer-events-auto');
+  });
+
+  it('keeps the content column interactive and scrollable in List mode', async () => {
+    let result: ReturnType<typeof renderApp> | undefined;
+    await act(async () => {
+      result = renderApp({ homeView: 'list' });
+    });
+
+    const column = result!.container.querySelector('.max-w-lg');
+    expect(column?.className).toContain('overflow-y-auto');
+    expect(column?.className).not.toContain('pointer-events-none');
+  });
 });

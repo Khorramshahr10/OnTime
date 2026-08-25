@@ -32,6 +32,8 @@ public class AthanPlugin extends Plugin implements SensorEventListener {
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private Sensor magnetometer;
+    private Sensor rotationVector;
+    private boolean useRotationVector = false;
     private boolean compassListening = false;
     private float[] gravity = null;
     private float[] geomagnetic = null;
@@ -67,16 +69,34 @@ public class AthanPlugin extends Plugin implements SensorEventListener {
         gravity = null;
         geomagnetic = null;
 
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-
-        if (accelerometer == null || magnetometer == null) {
+        if (magnetometer == null) {
             call.reject("Required sensors not available on this device");
             return;
         }
 
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
-        sensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_UI);
+        // Prefer the fused rotation-vector sensor: it's gyro-backed, so hand
+        // tremor doesn't read as a heading change the way it does when we
+        // derive azimuth from raw accelerometer + magnetometer ourselves.
+        rotationVector = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        useRotationVector = rotationVector != null;
+
+        if (useRotationVector) {
+            sensorManager.registerListener(this, rotationVector, SensorManager.SENSOR_DELAY_UI);
+            // Kept registered so onAccuracyChanged still tracks magAccuracy for
+            // the "figure eight" calibration prompt; its readings otherwise
+            // aren't used for heading in this mode (see onSensorChanged).
+            sensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_UI);
+        } else {
+            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            if (accelerometer == null) {
+                call.reject("Required sensors not available on this device");
+                return;
+            }
+            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
+            sensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_UI);
+        }
+
         compassListening = true;
         call.resolve();
     }
@@ -97,41 +117,58 @@ public class AthanPlugin extends Plugin implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
+        if (useRotationVector) {
+            // Magnetometer stays registered only to feed onAccuracyChanged
+            // below; recomputing heading from it here would just reintroduce
+            // the raw accel+mag jitter this mode exists to avoid.
+            if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
+                emitHeading();
+            }
+            return;
+        }
+
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             gravity = lowPass(event.values, gravity);
-        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
-            geomagnetic = lowPass(event.values, geomagnetic);
+            // Wait for a magnetometer sample to notify — accelerometer and
+            // magnetometer each fire independently at SENSOR_DELAY_UI, so
+            // notifying on both doubled the emit rate and let accelerometer
+            // noise (hand tremor) alone trigger a heading update.
+            return;
         }
 
-        if (gravity != null && geomagnetic != null) {
+        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            geomagnetic = lowPass(event.values, geomagnetic);
+            if (gravity == null) return;
             boolean success = SensorManager.getRotationMatrix(
                 rotationMatrix, null, gravity, geomagnetic);
-
-            if (success) {
-                // Heading for phone held FLAT (screen up)
-                SensorManager.getOrientation(rotationMatrix, orientation);
-                float flatAzimuth = (float) Math.toDegrees(orientation[0]);
-                float headingFlat = (flatAzimuth + declination + 360) % 360;
-                float pitch = (float) Math.toDegrees(orientation[1]);
-
-                // Heading for phone held UPRIGHT (screen facing user)
-                SensorManager.remapCoordinateSystem(rotationMatrix,
-                    SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedMatrix);
-                SensorManager.getOrientation(remappedMatrix, orientation);
-                float uprightAzimuth = (float) Math.toDegrees(orientation[0]);
-                float headingUpright = (uprightAzimuth + declination + 360) % 360;
-
-                JSObject result = new JSObject();
-                result.put("headingFlat", (double) headingFlat);
-                result.put("headingUpright", (double) headingUpright);
-                result.put("pitch", (double) pitch);
-                result.put("declination", (double) declination);
-                result.put("accuracy", magAccuracy);
-                // Use flat heading as default for now
-                result.put("heading", (double) headingFlat);
-                notifyListeners("compassHeading", result);
-            }
+            if (success) emitHeading();
         }
+    }
+
+    private void emitHeading() {
+        // Heading for phone held FLAT (screen up)
+        SensorManager.getOrientation(rotationMatrix, orientation);
+        float flatAzimuth = (float) Math.toDegrees(orientation[0]);
+        float headingFlat = (flatAzimuth + declination + 360) % 360;
+        float pitch = (float) Math.toDegrees(orientation[1]);
+
+        // Heading for phone held UPRIGHT (screen facing user)
+        SensorManager.remapCoordinateSystem(rotationMatrix,
+            SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedMatrix);
+        SensorManager.getOrientation(remappedMatrix, orientation);
+        float uprightAzimuth = (float) Math.toDegrees(orientation[0]);
+        float headingUpright = (uprightAzimuth + declination + 360) % 360;
+
+        JSObject result = new JSObject();
+        result.put("headingFlat", (double) headingFlat);
+        result.put("headingUpright", (double) headingUpright);
+        result.put("pitch", (double) pitch);
+        result.put("declination", (double) declination);
+        result.put("accuracy", magAccuracy);
+        // Use flat heading as default for now
+        result.put("heading", (double) headingFlat);
+        notifyListeners("compassHeading", result);
     }
 
     @Override

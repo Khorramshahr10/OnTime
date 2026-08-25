@@ -29,6 +29,7 @@ import { getCloudImagery } from '../services/cloudImagery';
 
 const NOW = new Date('2026-08-23T15:00:00.000Z');
 const TODAY = '2026-08-23';
+const YESTERDAY = '2026-08-22';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -47,7 +48,10 @@ describe('getCloudImagery', () => {
     expect(mockHttpGet).toHaveBeenCalledTimes(1);
     expect(mockHttpGet.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        url: expect.stringContaining(`TIME=${TODAY}`),
+        // Requests yesterday's date, not today's: a same-day VIIRS mosaic
+        // can still be mid-composite and mostly black. See GIBS_URL's
+        // comment in cloudImagery.ts.
+        url: expect.stringContaining(`TIME=${YESTERDAY}`),
         responseType: 'blob',
       }),
     );

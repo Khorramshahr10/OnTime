@@ -9,17 +9,28 @@ const CLOUD_DATE_KEY = 'ontime_cloud_imagery_date';
 
 /**
  * NASA GIBS TrueColor mosaic. Verified by hand: returns image/jpeg,
- * access-control-allow-origin: *, ~150KB at this resolution, and same-day
- * imagery is already available (the /best/ path auto-resolves gaps).
- * There is no clean cloud-only layer in GIBS (Cloud_Fraction renders as a
- * discrete scientific color palette, not a grayscale mask) — clouds are
- * extracted from this real photo client-side by extractCloudAlpha below.
+ * access-control-allow-origin: *. There is no clean cloud-only layer in
+ * GIBS (Cloud_Fraction renders as a discrete scientific color palette, not
+ * a grayscale mask) — clouds are extracted from this real photo
+ * client-side by extractCloudAlpha below. This same image now also serves
+ * as the home globe's earth surface (see homeGlobe.ts), so the resolution
+ * is high enough to read as a real planet up close, not just a cloud mask.
+ *
+ * Deliberately requests YESTERDAY's date, not today's: VIIRS SNPP is a
+ * polar orbiter that builds up same-day global coverage swath by swath as
+ * it passes over the earth, so a same-day request can return a mosaic
+ * that's only partially filled in — most of the globe rendered black —
+ * depending what time of day (UTC) the request lands. Verified by pulling
+ * a same-day fetch straight off a device: a large fraction of the globe
+ * was solid black, with real imagery only where the satellite had already
+ * passed. Yesterday is always a complete mosaic, and this is a decorative
+ * background — a day-old cloud pattern is indistinguishable from live.
  */
 const GIBS_URL =
   'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi' +
   '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap' +
   '&LAYERS=VIIRS_SNPP_CorrectedReflectance_TrueColor' +
-  '&STYLES=&FORMAT=image/jpeg&HEIGHT=512&WIDTH=1024&SRS=EPSG:4326&BBOX=-180,-90,180,90';
+  '&STYLES=&FORMAT=image/jpeg&HEIGHT=1024&WIDTH=2048&SRS=EPSG:4326&BBOX=-180,-90,180,90';
 
 export interface CloudImageResult {
   /** Raw base64 JPEG data (no `data:` prefix). Null only when source is 'procedural'. */
@@ -31,6 +42,11 @@ export interface CloudImageResult {
 
 function utcDateString(now: Date): string {
   return now.toISOString().slice(0, 10);
+}
+
+/** UTC calendar date one day before `now` — see the GIBS_URL comment above. */
+function yesterdayUtcDateString(now: Date): string {
+  return utcDateString(new Date(now.getTime() - 24 * 60 * 60 * 1000));
 }
 
 async function readCachedImage(): Promise<string | null> {
@@ -53,7 +69,7 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
 
   try {
     const response = await CapacitorHttp.get({
-      url: `${GIBS_URL}&TIME=${today}`,
+      url: `${GIBS_URL}&TIME=${yesterdayUtcDateString(now)}`,
       responseType: 'blob',
     });
     if (!(response.status >= 200 && response.status < 300)) {

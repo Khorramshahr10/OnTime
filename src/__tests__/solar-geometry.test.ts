@@ -14,6 +14,9 @@ import {
   angularSeparation,
   sunPath,
   subSolarPoint,
+  subLunarPoint,
+  geocentricMoonEcliptic,
+  moonIllumination,
 } from '../services/solarGeometry';
 
 const DEARBORN = { latitude: 42.3223, longitude: -83.1763 };
@@ -259,5 +262,64 @@ describe('subSolarPoint', () => {
     const date = new Date(Date.UTC(2026, 2, 20, 9, 20, 0)); // ~solar noon at Mecca (~09:20 UTC)
     const point = subSolarPoint(date);
     expect(point.longitude).toBeCloseTo(MECCA.longitude, 0); // Should be near +39.83°
+  });
+});
+
+describe('geocentricMoonEcliptic', () => {
+  it('reproduces Meeus example 47.a (1992 Apr 12, 0h)', () => {
+    const date = new Date(Date.UTC(1992, 3, 12, 0, 0, 0));
+    const { longitudeDeg, latitudeDeg } = geocentricMoonEcliptic(date);
+    // Book values: lambda = 133.162655, beta = -3.229126. The periodic
+    // series used here is Meeus's own ("Astronomical Formulas for
+    // Calculators", ch. 30); the edition-to-edition coefficient drift keeps
+    // lambda within a couple of hundredths of a degree.
+    expect(longitudeDeg).toBeCloseTo(133.162655, 1);
+    expect(latitudeDeg).toBeCloseTo(-3.229126, 2);
+  });
+});
+
+describe('subLunarPoint', () => {
+  it('lands on the JPL-validated sub-lunar point for 2026-08-24 12:00 UTC', () => {
+    // NASA JPL Horizons apparent place for that moment: RA 291.5473°,
+    // Dec -25.4289°; subtracting GMST gives longitude +138.76°.
+    const p = subLunarPoint(new Date(Date.UTC(2026, 7, 24, 12, 0, 0)));
+    expect(p.latitude).toBeCloseTo(-25.43, 1);
+    expect(p.longitude).toBeCloseTo(138.76, 1);
+  });
+
+  it('stays within the Moon\'s declination band (max ~±28.6°)', () => {
+    for (let day = 0; day < 60; day++) {
+      const p = subLunarPoint(new Date(Date.UTC(2026, 0, 1 + day, 6, 0, 0)));
+      expect(Math.abs(p.latitude)).toBeLessThanOrEqual(28.7);
+    }
+  });
+
+  it('drifts east ~12.2°/day (the Moon gains on the rotating earth)', () => {
+    const a = subLunarPoint(new Date(Date.UTC(2026, 7, 24, 12, 0, 0)));
+    const b = subLunarPoint(new Date(Date.UTC(2026, 7, 25, 12, 0, 0)));
+    let drift = b.longitude - a.longitude;
+    drift = ((drift + 180) % 360 + 360) % 360 - 180; // normalize to [-180, 180]
+    expect(drift).toBeGreaterThan(11);
+    expect(drift).toBeLessThan(13.5);
+  });
+
+  it('shares the globe frame with subSolarPoint (unit direction)', () => {
+    const p = subLunarPoint(new Date(Date.UTC(2026, 7, 24, 12, 0, 0)));
+    expect(len(latLonToVec3(p.latitude, p.longitude))).toBeCloseTo(1, 10);
+  });
+});
+
+describe('moonIllumination', () => {
+  it('is near zero at the 2025-01-29 new moon', () => {
+    expect(moonIllumination(new Date(Date.UTC(2025, 0, 29, 12, 36)))).toBeLessThan(0.02);
+  });
+
+  it('is near one at the 2025-02-12 full moon', () => {
+    expect(moonIllumination(new Date(Date.UTC(2025, 1, 12, 13, 53)))).toBeGreaterThan(0.98);
+  });
+
+  it('is near half at the 2025 first and last quarters', () => {
+    expect(Math.abs(moonIllumination(new Date(Date.UTC(2025, 1, 5, 8, 2))) - 0.5)).toBeLessThan(0.02);
+    expect(Math.abs(moonIllumination(new Date(Date.UTC(2025, 1, 20, 17, 33))) - 0.5)).toBeLessThan(0.02);
   });
 });
