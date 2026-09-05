@@ -1,4 +1,4 @@
-import { calculatePrayerTimes, calculateQiblaDirection } from '../services/prayerService';
+import { calculatePrayerTimes, getTimeUntil, formatTime } from '../services/prayerService';
 import type { CalculationMethod as CalcMethodType } from '../types';
 
 // Extreme latitudes
@@ -123,5 +123,45 @@ describe('User story: I get accurate prayer times no matter where I am', () => {
 
       expect(hanAsr.getTime()).toBeGreaterThan(stdAsr.getTime());
     }
+  });
+});
+
+describe('extreme latitudes (midnight sun / polar night)', () => {
+  // adhan returns Invalid Date for prayers that don't occur above the Arctic
+  // Circle in summer (and the winter dual). The countdown must never be fed
+  // one of those — a NaN countdown can never reset itself.
+  function expectUsableCountdown(result: ReturnType<typeof calculatePrayerTimes>, date: Date) {
+    if (result.nextPrayer !== null) {
+      expect(result.nextPrayerTime).not.toBeNull();
+      expect(Number.isNaN(result.nextPrayerTime!.getTime())).toBe(false);
+      expect(result.nextPrayerTime!.getTime()).toBeGreaterThan(date.getTime());
+    } else {
+      expect(result.nextPrayerTime).toBeNull();
+    }
+    if (result.currentPrayer !== null) {
+      const current = result.prayers.find((p) => p.name === result.currentPrayer)!.time;
+      expect(Number.isNaN(current.getTime())).toBe(false);
+    }
+  }
+
+  it('polar summer: next prayer always has a real, future time', () => {
+    const date = new Date(2026, 5, 21, 12, 0, 0);
+    const result = calculatePrayerTimes(TROMSO, date, 'MuslimWorldLeague', 'Standard');
+    // Sanity: this really is a broken-times scenario, otherwise this test proves nothing.
+    const fajr = result.prayers.find((p) => p.name === 'fajr')!.time;
+    expect(Number.isNaN(fajr.getTime())).toBe(true);
+    expectUsableCountdown(result, date);
+  });
+
+  it('polar winter: next prayer always has a real, future time', () => {
+    const date = new Date(2026, 11, 21, 12, 0, 0);
+    const result = calculatePrayerTimes(TROMSO, date, 'MuslimWorldLeague', 'Standard');
+    expectUsableCountdown(result, date);
+  });
+
+  it('getTimeUntil and formatTime are safe with Invalid Date', () => {
+    const invalid = new Date(NaN);
+    expect(getTimeUntil(invalid)).toEqual({ hours: 0, minutes: 0, seconds: 0, totalSeconds: 0 });
+    expect(formatTime(invalid)).toBe('—');
   });
 });

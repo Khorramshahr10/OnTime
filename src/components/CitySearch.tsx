@@ -5,11 +5,21 @@ interface CitySearchProps {
   onSelect: (city: CityEntry) => void;
 }
 
+// Must match the dataset spellings in src/data/cities.ts (GeoNames) exactly —
+// popular entries resolve by exact name, and the dataset has no "Mecca" or
+// "Medina" (its "Medina" is Medina, Ohio).
 const POPULAR_CITY_NAMES = [
-  'Mecca', 'Medina', 'Istanbul', 'Cairo', 'London', 'Dubai',
+  'Makkah', 'Madinah', 'Istanbul', 'Cairo', 'London', 'Dubai',
   'Riyadh', 'Kuala Lumpur', 'Jakarta', 'Karachi', 'Casablanca',
-  'New York', 'Toronto', 'Paris', 'Berlin', 'Sydney',
+  'New York City', 'Toronto', 'Paris', 'Berlin', 'Sydney',
 ];
+
+// Common English spellings that don't appear in the dataset verbatim.
+const QUERY_ALIASES: Record<string, string> = {
+  mecca: 'makkah',
+  medina: 'madinah',
+  'new york': 'new york city',
+};
 
 const MAX_RESULTS = 20;
 const DEBOUNCE_MS = 150;
@@ -62,7 +72,7 @@ export function CitySearch({ onSelect }: CitySearchProps) {
       return popular;
     }
 
-    const q = debouncedQuery.toLowerCase();
+    const q = (QUERY_ALIASES[debouncedQuery.toLowerCase()] ?? debouncedQuery).toLowerCase();
     const startsWith: CityEntry[] = [];
     const contains: CityEntry[] = [];
 

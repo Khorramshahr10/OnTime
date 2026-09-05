@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // dist = build output; .worktrees = scratch git worktrees; android/ios =
+  // native shells whose generated assets (e.g. native-bridge.js) aren't ours.
+  globalIgnores(['dist', '.worktrees', 'android', 'ios']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

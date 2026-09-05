@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Preferences } from '@capacitor/preferences';
 
 const mockWriteFile = vi.fn();
@@ -25,7 +25,7 @@ vi.mock('@capacitor/core', () => ({
   registerPlugin: () => ({}),
 }));
 
-import { getCloudImagery } from '../services/cloudImagery';
+import { getCloudImagery, extractCloudAlpha } from '../services/cloudImagery';
 
 const NOW = new Date('2026-08-23T15:00:00.000Z');
 const TODAY = '2026-08-23';
@@ -137,5 +137,116 @@ describe('getCloudImagery', () => {
       key: 'ontime_cloud_imagery_date',
       value: TODAY,
     });
+  });
+});
+
+describe('extractCloudAlpha', () => {
+  let fakeCtx: {
+    drawImage: ReturnType<typeof vi.fn>;
+    getImageData: ReturnType<typeof vi.fn>;
+    putImageData: ReturnType<typeof vi.fn>;
+  };
+  let lastPutData: Uint8ClampedArray | null;
+
+  function setupPixels(pixels: [number, number, number][]) {
+    const data = new Uint8ClampedArray(pixels.length * 4);
+    pixels.forEach(([r, g, b], i) => {
+      data[i * 4] = r;
+      data[i * 4 + 1] = g;
+      data[i * 4 + 2] = b;
+      data[i * 4 + 3] = 255;
+    });
+    fakeCtx.getImageData.mockReturnValue({ data, width: pixels.length, height: 1 });
+  }
+
+  function makeImage(naturalWidth: number, naturalHeight: number): HTMLImageElement {
+    return { naturalWidth, naturalHeight } as unknown as HTMLImageElement;
+  }
+
+  beforeEach(() => {
+    lastPutData = null;
+    fakeCtx = {
+      drawImage: vi.fn(),
+      getImageData: vi.fn(),
+      putImageData: vi.fn((imageData: { data: Uint8ClampedArray }) => {
+        lastPutData = imageData.data;
+      }),
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      fakeCtx as unknown as CanvasRenderingContext2D,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('produces full alpha for pure white pixels', () => {
+    setupPixels([[255, 255, 255]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(255);
+  });
+
+  it('produces zero alpha for pure black pixels', () => {
+    setupPixels([[0, 0, 0]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(0);
+  });
+
+  it('produces zero alpha for saturated blue ocean pixels', () => {
+    setupPixels([[20, 60, 180]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(0);
+  });
+
+  it('produces zero alpha for saturated green vegetation pixels', () => {
+    setupPixels([[30, 150, 40]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(0);
+  });
+
+  it('produces zero alpha for mid-gray pixels just under the brightness threshold', () => {
+    setupPixels([[140, 140, 140]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(0);
+  });
+
+  it('produces full alpha for bright off-white cloud-like pixels', () => {
+    setupPixels([[235, 238, 240]]);
+    extractCloudAlpha(makeImage(1, 1));
+    expect(lastPutData![3]).toBe(255);
+  });
+
+  it('always writes R=G=B=255 for every pixel regardless of input color', () => {
+    setupPixels([
+      [255, 255, 255],
+      [0, 0, 0],
+      [20, 60, 180],
+      [30, 150, 40],
+      [140, 140, 140],
+      [235, 238, 240],
+    ]);
+    extractCloudAlpha(makeImage(6, 1));
+    for (let i = 0; i < 6; i++) {
+      expect(lastPutData![i * 4]).toBe(255);
+      expect(lastPutData![i * 4 + 1]).toBe(255);
+      expect(lastPutData![i * 4 + 2]).toBe(255);
+    }
+  });
+
+  it('downscales an oversized image to the mask cap, keeping its aspect ratio', () => {
+    setupPixels([[255, 255, 255]]);
+    const canvas = extractCloudAlpha(makeImage(2048, 1024));
+    // Capped at 512 wide: the full-size loop is 2M main-thread iterations
+    // running while the globe loads.
+    expect(canvas.width).toBe(512);
+    expect(canvas.height).toBe(256);
+  });
+
+  it('leaves an image already under the cap at its natural size', () => {
+    setupPixels([[255, 255, 255]]);
+    const canvas = extractCloudAlpha(makeImage(256, 128));
+    expect(canvas.width).toBe(256);
+    expect(canvas.height).toBe(128);
   });
 });

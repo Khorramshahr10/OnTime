@@ -15,7 +15,8 @@ import { IslamicPrayerTable } from './components/IslamicPrayerTable';
 import { IslamicCountdownTimer } from './components/IslamicCountdownTimer';
 import { GirihBackground } from './components/IslamicPatterns';
 import { LocationDisplay } from './components/LocationDisplay';
-import { SunDomeCard } from './components/SunDomeCard';
+// Today's Sky is commented out below; keep the import alongside it.
+// import { SunDomeCard } from './components/SunDomeCard';
 import { HomeGlobeScreen } from './components/HomeGlobeScreen';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { TravelPromptDialog } from './components/TravelPromptDialog';
@@ -49,8 +50,10 @@ function App() {
     });
   }, []);
 
-  // Set up push notifications
-  useNotifications();
+  // Set up push notifications — but not until onboarding is done, so the OS
+  // permission prompt doesn't fire over the welcome screen before the
+  // onboarding's own notification step can explain it.
+  useNotifications(showOnboarding === false);
 
   // Handle Android back button / swipe gesture
   const handleBackButton = useCallback(() => {
@@ -95,7 +98,9 @@ function App() {
       const distanceText = formatDistance(travelState.distanceFromHomeKm, settings.distanceUnit);
       LocalNotifications.schedule({
         notifications: [{
-          id: 900,
+          // Outside the prayer range (1–999): prayer rescheduling cancels
+          // that whole range and would otherwise wipe this before it fires.
+          id: 1300,
           title: 'Are you traveling?',
           body: `You're about ${distanceText} from home \u2014 tap to enable shortened prayers.`,
           schedule: { at: new Date(Date.now() + 500) },
@@ -281,9 +286,10 @@ function App() {
         {/* Content */}
         <div className={isIslamic ? 'px-5 pb-6' : 'px-4 pb-6'}>
 
-        {/* Today's Sky — dropped while a full-screen overlay covers it, so we
-            aren't running a hidden WebGL context alongside the qibla globe. */}
-        {!isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSettingsOpen && <SunDomeCard prayers={prayers} />}
+        {/* Today's Sky — removed for now, kept here in case it comes back.
+            Was dropped while a full-screen overlay covered it, so we weren't
+            running a hidden WebGL context alongside the qibla globe. */}
+        {/* {!isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSettingsOpen && <SunDomeCard prayers={prayers} />} */}
 
         {/* Current Prayer & Countdown */}
         {(currentPrayer || nextPrayer) && (
@@ -356,13 +362,13 @@ function App() {
       </div>
 
       {/* Modals */}
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-background)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
         <QiblaCompass isOpen={isQiblaOpen} onClose={() => setIsQiblaOpen(false)} />
       </Suspense>
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-background)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
         <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onBackRef={settingsBackRef} />
       </Suspense>
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-bg)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-background)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
         <Dashboard isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
       </Suspense>
       <TravelPromptDialog />

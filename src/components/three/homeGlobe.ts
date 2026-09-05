@@ -47,6 +47,16 @@ const FOCUS_ALTITUDE = 0.5; // "My location" fly-in
 const MIN_ALTITUDE = 0.06; // pinch floor, just above the atmosphere
 const MAX_DISTANCE = 3500;
 
+// NASA Blue Marble (public domain), bundled so the globe always has a complete
+// earth under the streamed tiles — including on a cold start and offline.
+const BASE_EARTH_TEXTURE_URL = '/earth-base.jpg';
+
+// How long the render loop keeps running after something changes the scene,
+// before it parks again. The initial one is longer to cover the first wave of
+// surface tiles, which arrive well after onGlobeReady.
+const INITIAL_SETTLE_MS = 4000;
+const SETTLE_MS = 1200;
+
 const SUN_ALTITUDE = 20;
 const MOON_ALTITUDE = 20;
 const SUN_RADIUS = 40;
@@ -373,6 +383,7 @@ export class HomeGlobe {
 
   private moonRot = new THREE.Quaternion();
   private moonLocked = false;
+  private moonSurfaceTexture?: THREE.Texture;
   private worldSunDir = new THREE.Vector3(0, 0, 1);
   private dragStart = { x: 0, y: 0, active: false };
   private idlePauseTimer?: ReturnType<typeof setTimeout>;
@@ -402,6 +413,7 @@ export class HomeGlobe {
   private ro?: ResizeObserver;
   private io?: IntersectionObserver;
   private onVisibility = () => this.syncLoop();
+  private prevManagerOnLoad?: () => void;
 
   constructor(host: HTMLElement, data: HomeGlobeData) {
     this.host = host;
@@ -415,6 +427,12 @@ export class HomeGlobe {
       rendererConfig: { alpha: true, antialias: true },
     })
       .backgroundColor('rgba(0,0,0,0)')
+      // The tile engine parks an opaque black sphere just under the surface at
+      // any level > 0, and only adds a tile once its image has downloaded — so
+      // without a base texture every un-loaded tile reads as a black hole while
+      // the mosaic streams in. Bundled (not fetched) so it is up on the first
+      // frame and still works offline; the GIBS photo upgrades it on arrival.
+      .globeImageUrl(BASE_EARTH_TEXTURE_URL)
       .showAtmosphere(true)
       .atmosphereColor('#4d7fbf')
       .atmosphereAltitude(0.12)
@@ -443,12 +461,22 @@ export class HomeGlobe {
       cam.near = 1;
       cam.far = 30000;
       cam.updateProjectionMatrix();
+      // Same reason the GIBS swap below does it: the streamed tiles have to
+      // draw over the base sphere rather than z-fight it.
+      const baseMat = this.globe.globeMaterial() as THREE.MeshPhongMaterial;
+      if (baseMat) baseMat.depthWrite = false;
       this.buildExtras();
       // Aim the camera first, so the cloud layer fetches the tiles around
       // the user's location rather than the globe's default (0,0) point.
       this.globe.pointOfView({ lat: this.data.latitude, lng: this.data.longitude, altitude: HOME_ALTITUDE }, 0);
+      this.applyKey = this.computeApplyKey(this.data);
       this.applyData();
       this.updateZoomFades();
+      // Nothing animates on its own in orbit view (no auto-rotate; sun and moon
+      // move once a minute), so park the render loop once the opening tiles
+      // have had time to land. Without this the loop only ever idles after an
+      // interaction, and an untouched globe renders at full rate forever.
+      this.renderThenSettle(INITIAL_SETTLE_MS);
     });
 
     this.globe.onZoom(() => {
@@ -471,6 +499,15 @@ export class HomeGlobe {
     this.io.observe(this.host);
 
     document.addEventListener('visibilitychange', this.onVisibility);
+    // Surface tiles load through three's default manager (three-slippy-map-globe
+    // uses a bare TextureLoader), and they arrive long after the camera stopped
+    // moving. With the loop now parking when idle, a tile landing after the park
+    // would never be drawn — so render once more whenever loading goes quiet.
+    this.prevManagerOnLoad = THREE.DefaultLoadingManager.onLoad;
+    THREE.DefaultLoadingManager.onLoad = () => {
+      this.prevManagerOnLoad?.();
+      this.renderThenSettle();
+    };
     this.syncLoop();
     this.fetchGibsImagery();
 
@@ -516,7 +553,36 @@ export class HomeGlobe {
       else this.exitGroundMode();
     }
     if (this.inGroundMode) this.updateGroundView();
-    this.applyData();
+    // The sun, moon and prayer lines move with time and place — not with
+    // compass headings or the parent's per-second countdown re-renders.
+    // Skip the full reapply (four line geometries + six canvas label
+    // textures + the lunar ephemeris) unless one of those actually changed.
+    const key = this.computeApplyKey(data);
+    if (key !== this.applyKey) {
+      this.applyKey = key;
+      this.applyData();
+      // The scene changed while the loop may be parked — render it, then park
+      // again. Skipping this leaves the minute tick invisible until the user
+      // next touches the globe.
+      this.renderThenSettle();
+    }
+  }
+
+  /** Draw the change that was just applied, then let the loop idle again. */
+  private renderThenSettle(ms = SETTLE_MS): void {
+    this.wake();
+    this.scheduleIdlePause(ms);
+  }
+
+  private applyKey = '';
+
+  private computeApplyKey(data: HomeGlobeData): string {
+    return [
+      data.now.getTime(),
+      data.latitude,
+      data.longitude,
+      data.prayers.map((p) => `${p.name}${p.time.getTime()}`).join(','),
+    ].join('|');
   }
 
   /** Restore the camera's up vector to world-up and re-centre the orbit target.
@@ -666,16 +732,23 @@ export class HomeGlobe {
     }
   }
 
+  // Scratch vectors for the ground view — applyGroundOrientation runs at
+  // compass rate, so no per-call allocations.
+  private groundUp = new THREE.Vector3();
+  private groundNorth = new THREE.Vector3();
+  private groundEast = new THREE.Vector3();
+  private groundFacing = new THREE.Vector3();
+  private groundLookAt = new THREE.Vector3();
+
   /** Point the ground camera at the phone's compass heading, slightly down. */
   private applyGroundOrientation(): void {
     const cam = this.globe.camera() as THREE.PerspectiveCamera;
     const pos = cam.position;
-    const up = pos.clone().normalize();
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    let north = new THREE.Vector3().copy(worldUp).addScaledVector(up, -worldUp.dot(up));
-    if (north.lengthSq() < 1e-6) north = new THREE.Vector3(1, 0, 0);
+    const up = this.groundUp.copy(pos).normalize();
+    const north = this.groundNorth.set(0, 1, 0).addScaledVector(up, -up.y);
+    if (north.lengthSq() < 1e-6) north.set(1, 0, 0);
     north.normalize();
-    const east = new THREE.Vector3().crossVectors(north, up).normalize();
+    const east = this.groundEast.crossVectors(north, up).normalize();
 
     const raw = this.data.deviceHeading ?? 0;
     // Low-pass filter the heading (shortest-arc lerp) so the view and the line
@@ -688,17 +761,22 @@ export class HomeGlobe {
       this.smoothHeading = (this.smoothHeading + diff * 0.22 + 360) % 360;
     }
     const rad = this.smoothHeading * D2R;
-    const facing = new THREE.Vector3().addScaledVector(north, Math.cos(rad)).addScaledVector(east, Math.sin(rad));
+    const facing = this.groundFacing.set(0, 0, 0).addScaledVector(north, Math.cos(rad)).addScaledVector(east, Math.sin(rad));
     cam.up.copy(up);
-    cam.lookAt(pos.clone().add(facing).addScaledVector(up, -GROUND_PITCH));
+    this.groundLookAt.copy(pos).add(facing).addScaledVector(up, -GROUND_PITCH);
+    cam.lookAt(this.groundLookAt);
   }
 
   /** Place the ground camera at the user's location and aim it. */
   private updateGroundView(): void {
     const { latitude, longitude } = this.data;
     const cam = this.globe.camera() as THREE.PerspectiveCamera;
-    cam.position.copy(v3(this.globe.getCoords(latitude, longitude, GROUND_ALTITUDE)));
+    const p = this.globe.getCoords(latitude, longitude, GROUND_ALTITUDE);
+    cam.position.set(p.x, p.y, p.z);
     this.applyGroundOrientation();
+    // Compass events re-arm this on every reading, so the loop stays live while
+    // the phone is moving and parks shortly after the readings stop.
+    this.renderThenSettle();
   }
 
   /** Draw the thick great-circle line from the user to the Kaaba + the 3D Kaaba. */
@@ -753,6 +831,9 @@ export class HomeGlobe {
     this.groundLineMaterial = undefined;
   }
 
+  private tapSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), GLOBE_RADIUS);
+  private tapHit = new THREE.Vector3();
+
   private handleTap(e: PointerEvent): void {
     if (!this.moon || this.disposed) return;
     if (this.inGroundMode || this.groundFlyAnim) return; // moon tap is a globe-mode action
@@ -763,9 +844,13 @@ export class HomeGlobe {
       -((e.clientY - rect.top) / rect.height) * 2 + 1
     );
     this.raycaster.setFromCamera(ndc, this.globe.camera());
-    if (this.raycaster.intersectObject(this.moon).length > 0) {
-      this.focusOnMoon();
-    }
+    const moonHits = this.raycaster.intersectObject(this.moon);
+    if (moonHits.length === 0) return;
+    // Don't let a tap reach the moon through the planet: if the ray meets
+    // the surface sphere first, the globe is in front of the moon.
+    const surfaceHit = this.raycaster.ray.intersectSphere(this.tapSphere, this.tapHit);
+    if (surfaceHit && surfaceHit.distanceTo(this.raycaster.ray.origin) < moonHits[0].distance) return;
+    this.focusOnMoon();
   }
 
   private animateMoonFly(): void {
@@ -795,13 +880,20 @@ export class HomeGlobe {
     this.groundFlyAnim = null;
     if (this.idlePauseTimer) clearTimeout(this.idlePauseTimer);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    THREE.DefaultLoadingManager.onLoad = this.prevManagerOnLoad as () => void;
     this.ro?.disconnect();
     this.io?.disconnect();
     this.globe?.pauseAnimation();
     this.cloudLoading.clear();
+    for (const mesh of this.cloudPatches.values()) {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.cloudPatches.clear();
     for (const tex of this.cloudTextures.values()) tex.dispose();
     this.cloudTextures.clear();
-    this.gibsCloudMaterial?.uniforms.cloudMap.value?.dispose();
+    const gibsMap = this.gibsCloudMaterial?.uniforms.cloudMap.value as THREE.Texture | undefined;
+    if (gibsMap && gibsMap !== this.placeholderTexture) gibsMap.dispose();
     if (this.prayerLinesGroup) {
       for (const obj of [...this.prayerLinesGroup.children]) {
         this.prayerLinesGroup.remove(obj);
@@ -814,13 +906,43 @@ export class HomeGlobe {
         }
       }
     }
-    if (this.groundGroup) {
-      for (const obj of [...this.groundGroup.children]) {
-        this.groundGroup.remove(obj);
-        (obj as THREE.Line).geometry?.dispose();
-        ((obj as THREE.Line | THREE.Mesh).material as THREE.Material)?.dispose();
-      }
+    // clearGroundLine traverses, so the Kaaba model's meshes and materials
+    // are disposed too — a shallow child loop would leak them.
+    if (this.groundGroup) this.clearGroundLine();
+    if (this.starfield) {
+      this.starfield.geometry.dispose();
+      (this.starfield.material as THREE.Material).dispose();
     }
+    if (this.nightShade) {
+      this.nightShade.geometry.dispose();
+      this.nightMaterial.dispose();
+    }
+    if (this.sun) {
+      this.sun.geometry.dispose();
+      (this.sun.material as THREE.Material).dispose();
+    }
+    if (this.sunHalo) {
+      (this.sunHalo.material as THREE.SpriteMaterial).map?.dispose();
+      this.sunHalo.material.dispose();
+    }
+    if (this.moon) {
+      this.moon.geometry.dispose();
+      this.moonMaterial.dispose();
+    }
+    this.moonSurfaceTexture?.dispose();
+    if (this.moonHalo) {
+      (this.moonHalo.material as THREE.SpriteMaterial).map?.dispose();
+      this.moonHalo.material.dispose();
+    }
+    if (this.pin) {
+      (this.pin.material as THREE.SpriteMaterial).map?.dispose();
+      this.pin.material.dispose();
+    }
+    if (this.gibsClouds) {
+      this.gibsClouds.geometry.dispose();
+      this.gibsCloudMaterial.dispose();
+    }
+    this.placeholderTexture?.dispose();
     try {
       (this.globe as unknown as { _destructor?: () => void })._destructor?.();
     } catch {
@@ -840,7 +962,9 @@ export class HomeGlobe {
   private syncLoop(): void {
     if (this.disposed || !this.globe) return;
     if (document.hidden) this.globe.pauseAnimation();
-    else this.globe.resumeAnimation();
+    // Coming back into view (or back to the tab) needs a frame to redraw, but
+    // must not leave the loop running forever afterwards.
+    else this.renderThenSettle();
   }
 
   /** Keep the render loop running now, and cancel any pending idle pause. */
@@ -941,8 +1065,10 @@ export class HomeGlobe {
     new THREE.TextureLoader().load(MOON_TEXTURE_URL, (tex) => {
       if (this.disposed) return;
       tex.colorSpace = THREE.SRGBColorSpace;
+      this.moonSurfaceTexture = tex;
       this.moonMaterial.uniforms.moonMap.value = tex;
       this.moonMaterial.needsUpdate = true;
+      this.renderThenSettle();
     });
 
     // Location marker
@@ -1129,11 +1255,12 @@ export class HomeGlobe {
           const canvas = extractCloudAlpha(img);
           const tex = new THREE.CanvasTexture(canvas);
           const prev = this.gibsCloudMaterial.uniforms.cloudMap.value as THREE.Texture;
-          prev?.dispose();
+          if (prev && prev !== this.placeholderTexture) prev.dispose();
           this.gibsCloudMaterial.uniforms.cloudMap.value = tex;
           this.baseCloudOpacity = OPENWEATHER_API_KEY ? 0 : 1;
           this.gibsCloudMaterial.needsUpdate = true;
           this.updateZoomFades();
+          this.renderThenSettle();
         };
         img.src = dataUrl;
       })
@@ -1234,14 +1361,22 @@ export class HomeGlobe {
       (mesh.material as THREE.ShaderMaterial).uniforms.cloudMap.value = tex;
       (mesh.material as THREE.ShaderMaterial).needsUpdate = true;
       this.updateZoomFades();
+      this.renderThenSettle();
     };
     img.onerror = () => this.cloudLoading.delete(key);
     img.src = cloudTileUrl(tile, OPENWEATHER_API_KEY);
   }
 
+  private placeholderTexture?: THREE.DataTexture;
+
+  /** Shared 1×1 transparent stand-in until a patch's real texture loads —
+   *  one per globe, not one per patch. */
   private emptyTexture(): THREE.DataTexture {
-    const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 0]), 1, 1, THREE.RGBAFormat);
-    tex.needsUpdate = true;
-    return tex;
+    if (!this.placeholderTexture) {
+      const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 0]), 1, 1, THREE.RGBAFormat);
+      tex.needsUpdate = true;
+      this.placeholderTexture = tex;
+    }
+    return this.placeholderTexture;
   }
 }

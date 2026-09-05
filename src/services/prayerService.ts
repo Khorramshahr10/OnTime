@@ -104,29 +104,53 @@ export function calculatePrayerTimes(
     }
   };
 
-  const currentPrayer = prayerEnumToName(currentPrayerEnum);
-  let nextPrayer = prayerEnumToName(nextPrayerEnum);
-  let nextPrayerTime: Date | null = nextPrayer ? prayerTimes.timeForPrayer(nextPrayerEnum) : null;
+  const isValidTime = (d: Date) => !Number.isNaN(d.getTime());
 
-  // If after Isha and before midnight, next prayer is Fajr (tomorrow)
-  if (!nextPrayer && currentPrayer === 'isha') {
-    const tomorrow = new Date(date);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowPrayers = new PrayerTimes(coordinates, tomorrow, params);
-    nextPrayer = 'fajr';
-    nextPrayerTime = tomorrowPrayers.fajr;
-  } else if (!nextPrayer && !currentPrayer) {
-    // After midnight, before Fajr - show Fajr as next
-    nextPrayer = 'fajr';
-    nextPrayerTime = prayerTimes.fajr;
+  // At extreme latitudes adhan returns Invalid Date for prayers that don't
+  // occur (midnight sun / polar night) — yet nextPrayer() can still name one
+  // of them. Resolve current/next only against prayers with real times so the
+  // countdown never renders NaN.
+  const currentPrayerName = prayerEnumToName(currentPrayerEnum);
+  const currentPrayer =
+    currentPrayerName && isValidTime(prayerTimes[currentPrayerName]) ? currentPrayerName : null;
+
+  const CORE_ORDER: PrayerName[] = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+  const nextValidIn = (times: PrayerTimes, after: Date): { name: PrayerName; time: Date } | null => {
+    let best: { name: PrayerName; time: Date } | null = null;
+    for (const name of CORE_ORDER) {
+      const time = times[name];
+      if (isValidTime(time) && time.getTime() > after.getTime() && (!best || time < best.time)) {
+        best = { name, time };
+      }
+    }
+    return best;
+  };
+
+  const adhanNextName = prayerEnumToName(nextPrayerEnum);
+  const adhanNextTime = adhanNextName ? prayerTimes.timeForPrayer(nextPrayerEnum) : null;
+
+  let next: { name: PrayerName; time: Date } | null = null;
+  // Also require a future time: once every prayer today has passed, adhan
+  // wraps to Fajr but timeForPrayer still returns this morning's (past) one.
+  if (adhanNextName && adhanNextTime && isValidTime(adhanNextTime) && adhanNextTime.getTime() > date.getTime()) {
+    next = { name: adhanNextName, time: adhanNextTime };
+  } else {
+    // Nothing valid left today (after Isha, or every remaining time invalid):
+    // take the first valid prayer of tomorrow.
+    next = nextValidIn(prayerTimes, date);
+    if (!next) {
+      const tomorrow = new Date(date);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      next = nextValidIn(new PrayerTimes(coordinates, tomorrow, params), date);
+    }
   }
 
   return {
     prayers,
     sunnahTimes: sunnahTimesData,
     currentPrayer,
-    nextPrayer,
-    nextPrayerTime,
+    nextPrayer: next?.name ?? null,
+    nextPrayerTime: next?.time ?? null,
   };
 }
 
@@ -136,6 +160,8 @@ export function calculateQiblaDirection(coords: CoordsType): number {
 }
 
 export function formatTime(date: Date): string {
+  // Prayers that don't occur at extreme latitudes arrive as Invalid Date.
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
@@ -151,8 +177,9 @@ export function getTimeUntil(targetTime: Date): {
 } {
   const now = new Date();
   const diff = targetTime.getTime() - now.getTime();
-  
-  if (diff <= 0) {
+
+  // NaN (invalid target) or already passed: no countdown to show.
+  if (!Number.isFinite(diff) || diff <= 0) {
     return { hours: 0, minutes: 0, seconds: 0, totalSeconds: 0 };
   }
 

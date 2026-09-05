@@ -26,38 +26,75 @@ export function useQibla() {
   });
   const [isListening, setIsListening] = useState(false);
   const cleanupRef = useRef<(() => void) | null>(null);
+  // Refs mirror the async in-flight state — checking the `isListening` state
+  // alone races: two overlapping startListening calls could both pass the
+  // check and register two native listeners, leaking the first.
+  const listeningRef = useRef(false);
+  const startingRef = useRef(false);
+  // Set when stopListening() lands while startListening() is still awaiting
+  // native registration: the pending start must tear its own listener down on
+  // resume instead of activating one the caller already asked to stop.
+  const stopRequestedRef = useRef(false);
+  // Compass sensors fire faster than the screen repaints. Keep only the
+  // latest reading and flush it at most once per animation frame.
+  const pendingRef = useRef<QiblaData | null>(null);
+  const flushRafRef = useRef(0);
 
   // Calculate Qibla direction based on current location
   const qiblaDirection = calculateQiblaDirection(location.coordinates);
 
+  const scheduleFlush = useCallback(() => {
+    if (flushRafRef.current) return;
+    flushRafRef.current = requestAnimationFrame(() => {
+      flushRafRef.current = 0;
+      const next = pendingRef.current;
+      pendingRef.current = null;
+      if (next) setData(next);
+    });
+  }, []);
+
+  const teardown = useCallback(() => {
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
+    listeningRef.current = false;
+    setIsListening(false);
+  }, []);
+
   const startListening = useCallback(async () => {
-    if (isListening) return;
+    if (startingRef.current) return;
+    startingRef.current = true;
+    stopRequestedRef.current = false;
 
     try {
+      // Restart rather than early-return when already active: the location
+      // (and with it the magnetic declination fed to the native compass and
+      // the qibla bearing baked into the listener) may have changed.
+      if (listeningRef.current) teardown();
+
       const platform = Capacitor.getPlatform();
+      const latitude = location.coordinates.latitude;
+      const longitude = location.coordinates.longitude;
 
       if (platform === 'android') {
         // Android: use native SensorManager via AthanPlugin for accurate heading
         const listener = await AthanPlugin.addListener('compassHeading', (event) => {
           const heading = event.heading;
           const accuracy = event.accuracy ?? 0;
-          const rotation = qiblaDirection - heading;
-
-          setData({
+          pendingRef.current = {
             qiblaDirection,
             deviceHeading: heading,
-            rotationAngle: rotation,
+            rotationAngle: qiblaDirection - heading,
             isCalibrated: accuracy >= 2,
             accuracy,
             error: null,
-          });
+          };
+          scheduleFlush();
         });
 
         // Pass user coordinates so native layer can compute magnetic declination
-        await AthanPlugin.startCompass({
-          latitude: location.coordinates.latitude,
-          longitude: location.coordinates.longitude,
-        });
+        await AthanPlugin.startCompass({ latitude, longitude });
 
         cleanupRef.current = () => {
           listener.remove();
@@ -65,43 +102,46 @@ export function useQibla() {
         };
       } else {
         // iOS: use Capacitor Motion plugin (webkitCompassHeading available)
-        await Motion.addListener('orientation', (event) => {
+        const handle = await Motion.addListener('orientation', (event) => {
           const compassHeading = (event as unknown as Record<string, number>).webkitCompassHeading;
 
           if (compassHeading !== undefined) {
-            const heading = compassHeading;
-            const rotation = qiblaDirection - heading;
-
-            setData({
+            pendingRef.current = {
               qiblaDirection,
-              deviceHeading: heading,
-              rotationAngle: rotation,
+              deviceHeading: compassHeading,
+              rotationAngle: qiblaDirection - compassHeading,
               isCalibrated: true,
               accuracy: 3,
               error: null,
-            });
+            };
           } else {
             // Fallback: alpha-based
             const raw = event.alpha ?? 0;
             const heading = (360 - raw) % 360;
-            const rotation = qiblaDirection - heading;
-
-            setData({
+            pendingRef.current = {
               qiblaDirection,
               deviceHeading: heading,
-              rotationAngle: rotation,
+              rotationAngle: qiblaDirection - heading,
               isCalibrated: true,
               accuracy: 1,
               error: null,
-            });
+            };
           }
+          scheduleFlush();
         });
 
         cleanupRef.current = () => {
-          Motion.removeAllListeners();
+          handle.remove();
         };
       }
 
+      if (stopRequestedRef.current) {
+        cleanupRef.current?.();
+        cleanupRef.current = null;
+        return;
+      }
+
+      listeningRef.current = true;
       setIsListening(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to access motion sensors';
@@ -110,26 +150,23 @@ export function useQibla() {
         error: message,
         isCalibrated: false,
       }));
+    } finally {
+      startingRef.current = false;
     }
-  }, [isListening, qiblaDirection, location.coordinates.latitude, location.coordinates.longitude]);
+  }, [qiblaDirection, location.coordinates.latitude, location.coordinates.longitude, scheduleFlush, teardown]);
 
-  const stopListening = useCallback(async () => {
-    if (!isListening) return;
-
-    try {
-      if (cleanupRef.current) {
-        cleanupRef.current();
-        cleanupRef.current = null;
-      }
-      setIsListening(false);
-    } catch (err) {
-      console.error('Failed to stop motion listener:', err);
-    }
-  }, [isListening]);
+  const stopListening = useCallback(() => {
+    if (startingRef.current) stopRequestedRef.current = true;
+    teardown();
+  }, [teardown]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (flushRafRef.current) {
+        cancelAnimationFrame(flushRafRef.current);
+        flushRafRef.current = 0;
+      }
       if (cleanupRef.current) {
         cleanupRef.current();
         cleanupRef.current = null;

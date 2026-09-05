@@ -304,9 +304,14 @@ export class SunDome extends Base3D<SunDomeData> {
   private rebuildDay(): void {
     const { latitude, solarNoon, marks, now } = this.data;
 
+    // The "next prayer" accent is baked into the marker colours, so it has
+    // to be part of the rebuild key — otherwise the highlight stays on the
+    // passed prayer until some other change forces a rebuild.
+    const nextIndex = latitude !== null ? marks.findIndex((m) => m.time.getTime() > now.getTime()) : -1;
     const key = [
       latitude ?? 'none',
       solarNoon?.getTime() ?? 'none',
+      nextIndex,
       marks.map((m) => `${m.name}${m.time.getTime()}${m.timeLabel}`).join(','),
     ].join('|');
 
@@ -356,9 +361,6 @@ export class SunDome extends Base3D<SunDomeData> {
         this.markDots = [];
         // Where the sun is now, so a marker sitting under it can step aside.
         const sunNow = v3(sunPosition(latitude, declination, hourAngle(now, solarNoon)).v);
-        // The prayer you're waiting for carries the accent colour; it's the one
-        // reading anyone opens this card to find.
-        const nextIndex = marks.findIndex((m) => m.time.getTime() > now.getTime());
 
         // Face the quarter of the sky the sun is in, so the prayers either side
         // of now sit in front of the viewer instead of round the edge.

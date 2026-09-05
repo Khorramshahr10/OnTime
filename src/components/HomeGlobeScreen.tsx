@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from '../context/LocationContext';
 import { useQibla } from '../hooks/useQibla';
 import type { PrayerTime } from '../types';
@@ -31,6 +31,7 @@ export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
   const [groundMode, setGroundMode] = useState(false);
   const { deviceHeading, qiblaDirection, accuracy, error, startListening, stopListening } = useQibla();
   const smoothRot = useRef<number | null>(null);
+  const [rot, setRot] = useState(0);
 
   // The sun moves a quarter of a degree a minute; a per-minute tick is
   // plenty, lined up with the start of each minute so it never drifts.
@@ -60,19 +61,26 @@ export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
     view.onGroundModeChange = setGroundMode;
   }, []);
 
-  // Smoothed degrees still to turn (positive = to your right).
-  let rawRot = 0;
-  if (groundMode && accuracy >= 2 && deviceHeading != null) {
-    rawRot = ((qiblaDirection - deviceHeading + 540) % 360) - 180;
-  }
-  if (smoothRot.current === null) smoothRot.current = rawRot;
-  else {
-    let d = rawRot - smoothRot.current;
-    if (d > 180) d -= 360;
-    if (d < -180) d += 360;
-    smoothRot.current += d * 0.3;
-  }
-  const rot = Math.round(smoothRot.current);
+  // Smoothed degrees still to turn (positive = to your right). Updated in an
+  // effect after commit — mutating the ref during render would be impure
+  // under StrictMode's double-render. Layout (not passive) effect: entering
+  // ground view would otherwise paint one frame of the stale pre-toggle angle
+  // before snapping to the real heading.
+  useLayoutEffect(() => {
+    let rawRot = 0;
+    if (groundMode && accuracy >= 2 && deviceHeading != null) {
+      rawRot = ((qiblaDirection - deviceHeading + 540) % 360) - 180;
+    }
+    if (smoothRot.current === null) smoothRot.current = rawRot;
+    else {
+      let d = rawRot - smoothRot.current;
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      smoothRot.current += d * 0.3;
+    }
+    const next = Math.round(smoothRot.current);
+    setRot((prev) => (prev === next ? prev : next));
+  }, [groundMode, accuracy, deviceHeading, qiblaDirection]);
 
   return (
     <div className="absolute inset-0 z-0" aria-hidden="true" style={{ background: SPACE_BACKDROP }}>

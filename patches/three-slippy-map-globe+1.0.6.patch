@@ -1,8 +1,16 @@
 diff --git a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
-index d4a84f6..c64aa3b 100644
+index d4a84f6..cdb8e78 100644
 --- a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
 +++ b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
-@@ -321,7 +321,7 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
+@@ -283,6 +283,7 @@ var genTilesCoords = function genTilesCoords(level, isMercator) {
+ 
+ var MAX_LEVEL_TO_RENDER_ALL_TILES = 6; // level 6 = 4096 tiles
+ var MAX_LEVEL_TO_BUILD_LOOKUP_OCTREE = 7; // octrees consume too much memory on higher levels, generate tiles on demand for those (based on globe surface distance) as the distortion is negligible
++var TILE_RETAIN_MAX = 120; // hidden tiles kept for instant re-zoom (~40MB GPU)
+ var TILE_SEARCH_RADIUS_CAMERA_DISTANCE = 3; // Euclidean distance factor, in units of camera distance to surface
+ var TILE_SEARCH_RADIUS_SURFACE_DISTANCE = 90; // in degrees on the globe surface, relative to camera altitude in globe radius units
+ var _radius = /*#__PURE__*/new WeakMap();
+@@ -321,7 +322,7 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
      _defineProperty(_this, "minLevel", void 0);
      _defineProperty(_this, "maxLevel", void 0);
      _defineProperty(_this, "thresholds", _toConsumableArray(new Array(30)).map(function (_, idx) {
@@ -11,3 +19,54 @@ index d4a84f6..c64aa3b 100644
      }));
      // in terms of radius units
      _defineProperty(_this, "curvatureResolution", 5);
+@@ -394,17 +395,34 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
+         return d.obj && (d.obj.material.depthWrite = false);
+       }));
+ 
+-      // Remove upper layers
++      // Hide, don't destroy, upper layers: zooming back in would otherwise
++      // re-download every tile we just had. Retention is bounded by
++      // TILE_RETAIN_MAX so a long panning session can't grow without limit.
+       if (prevLevel > level) {
++        !this.__retainedTiles && (this.__retainedTiles = []);
++        var retained = this.__retainedTiles;
+         for (var l = level + 1; l <= prevLevel; l++) {
+           _classPrivateFieldGet2(_tilesMeta, this)[l] && _classPrivateFieldGet2(_tilesMeta, this)[l].forEach(function (d) {
+-            if (d.obj) {
+-              _this2.remove(d.obj);
+-              _deallocate(d.obj);
+-              delete d.obj;
++            if (d.obj && d.obj.visible) {
++              d.obj.visible = false;
++              // Flag guards against the same tile being tracked twice across
++              // repeated hide/show cycles, which would skew the cap.
++              if (!d.__retained) {
++                d.__retained = true;
++                retained.push(d);
++              }
+             }
+           });
+         }
++        while (retained.length > TILE_RETAIN_MAX) {
++          var stale = retained.shift();
++          stale && (stale.__retained = false);
++          if (stale && stale.obj && !stale.obj.visible) {
++            _this2.remove(stale.obj);
++            _deallocate(stale.obj);
++            delete stale.obj;
++          }
++        }
+       }
+       _assertClassBrand(_ThreeSlippyMapGlobe_brand, this, _fetchNeededTiles).call(this);
+     }
+@@ -557,6 +575,10 @@ function _fetchNeededTiles() {
+   });
+   */
+ 
++  // Re-show anything we kept from a previous visit to this level.
++  tiles.forEach(function (d) {
++    d.obj && !d.obj.visible && (d.obj.visible = true);
++  });
+   tiles.filter(function (d) {
+     return !d.obj;
+   }).filter(_classPrivateFieldGet2(_isInView, this) || function () {

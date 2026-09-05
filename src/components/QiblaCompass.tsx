@@ -25,7 +25,9 @@ export function QiblaCompass({ isOpen, onClose }: QiblaCompassProps) {
   // that overflows the canvas, and the card above already shows it in full.
   const cityName = labelForGlobe(location.shortName || location.cityName || 'You');
 
-  const heading = useQiblaHeading();
+  // Gate the magnetometer on the screen actually being open — this component
+  // stays mounted for the app's lifetime.
+  const heading = useQiblaHeading(isOpen);
 
   // Feed the compass reading to the globe so it turns with the phone. Rounded
   // to whole degrees so sensor jitter doesn't rebuild the scene every frame.

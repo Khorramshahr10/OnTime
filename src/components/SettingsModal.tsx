@@ -90,6 +90,15 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
     settings.athan.selectedFajrAthanId !== null && settings.athan.selectedFajrAthanId !== settings.athan.selectedAthanId
   );
 
+  // The modal mounts at app start while persisted settings are still loading,
+  // so the useState initialiser captures defaults — resync once the real
+  // values arrive (and whenever they change elsewhere).
+  useEffect(() => {
+    setUseSeparateFajr(
+      settings.athan.selectedFajrAthanId !== null && settings.athan.selectedFajrAthanId !== settings.athan.selectedAthanId
+    );
+  }, [settings.athan.selectedFajrAthanId, settings.athan.selectedAthanId]);
+
   // Stop preview on category change or modal close
   const stopPreview = useCallback(() => {
     if (previewingId) {

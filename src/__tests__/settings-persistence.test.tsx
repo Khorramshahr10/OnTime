@@ -1,5 +1,5 @@
 import { Preferences } from '@capacitor/preferences';
-import { render, screen, act } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
 import type { Settings } from '../types';
 

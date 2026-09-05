@@ -278,6 +278,9 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
       if (child instanceof THREE.Sprite) {
         child.material.map?.dispose();
         child.material.dispose();
+      } else if (child instanceof THREE.Mesh && child.material !== this.homeMat && child.material !== this.kaabaMat) {
+        // Survey rings own their material; the dots share long-lived ones.
+        (child.material as THREE.Material).dispose();
       }
     }
     this.homeLabel = undefined;

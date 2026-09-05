@@ -24,6 +24,16 @@ vi.mock('../plugins/athanPlugin', () => ({
   },
 }));
 
+// jsdom has no WebGL; the real HomeGlobeScreen would try to mount globe.gl
+// and hit the live tile network with no timeout, hanging the test run.
+vi.mock('../components/HomeGlobeScreen', () => ({
+  HomeGlobeScreen: () => <div data-testid="home-globe-screen" />,
+}));
+
+vi.mock('../components/three/Scenes', () => ({
+  SunDomeView: () => <div data-testid="sun-dome" />,
+}));
+
 // jsdom does not implement window.matchMedia; provide a minimal stub
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {

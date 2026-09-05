@@ -9,6 +9,7 @@ import { calculatePrayerTimes } from './prayerService';
  *   jumuah:     1000–1099
  *   kahf:       1100–1199
  *   reminder:   1200–1299
+ *   travel:     1300    (the "Are you traveling?" prompt in App.tsx)
  *
  * Prayer sub-ranges within 1–999:
  *   fajr:    100–199   base 100, formula: base + (dayOffset * 10) + timeOffset
@@ -433,9 +434,12 @@ export async function scheduleSurahKahfNotifications(
   const notifications: ScheduleOptions['notifications'] = [];
 
   for (let weekOffset = 0; weekOffset < WEEKS_TO_SCHEDULE_KAHF; weekOffset++) {
-    // Find the upcoming Thursday (or today if Thursday)
+    // Find the Thursday that opens the relevant Islamic Friday. On Friday
+    // itself that window is already in progress (it runs until Friday
+    // Maghrib), so anchor to yesterday's Thursday rather than next week's —
+    // past notifications in the window are filtered out below.
     const firstThursday = new Date(now);
-    const daysToThursday = (4 - now.getDay() + 7) % 7;
+    const daysToThursday = now.getDay() === 5 ? -1 : (4 - now.getDay() + 7) % 7;
     firstThursday.setDate(now.getDate() + daysToThursday);
     const nextThursday = new Date(firstThursday);
     nextThursday.setDate(firstThursday.getDate() + (weekOffset * 7));

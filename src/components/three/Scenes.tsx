@@ -55,7 +55,9 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null, primaryA
   const viewRef = useRef<SceneView<T> | null>(null);
   const dataRef = useRef(data);
   const onViewRef = useRef(onView);
-  onViewRef.current = onView;
+  useEffect(() => {
+    onViewRef.current = onView;
+  });
   const supported = supportsWebGL();
 
   const reset = useCallback(() => {

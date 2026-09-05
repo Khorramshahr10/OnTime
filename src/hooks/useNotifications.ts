@@ -3,9 +3,10 @@ import { scheduleNotifications, scheduleJumuahNotifications, scheduleSurahKahfNo
 import { useSettings } from '../context/SettingsContext';
 import { useLocation } from '../context/LocationContext';
 
-export function useNotifications() {
+export function useNotifications(enabled = true) {
   const { settings } = useSettings();
   const { location } = useLocation();
+  const masterEnabled = enabled && settings.notifications.enabled;
 
   // Schedule prayer notifications whenever location or settings change
   const reschedule = useCallback(async () => {
@@ -27,21 +28,30 @@ export function useNotifications() {
     );
   }, [location.coordinates, settings.surahKahf, settings.calculationMethod, settings.asrCalculation]);
 
-  // Debounce rescheduling to prevent race conditions when settings change rapidly
+  // Debounce rescheduling to prevent race conditions when settings change rapidly.
+  // Not gated on the master switch: with notifications disabled, reschedule is
+  // exactly what cancels everything.
   useEffect(() => {
+    if (!enabled) return;
     const timer = setTimeout(() => { reschedule(); }, 300);
     return () => clearTimeout(timer);
-  }, [reschedule]);
+  }, [reschedule, enabled]);
 
+  // Gated on the master switch: disabling cancels these via reschedule's
+  // cancel-all, and re-enabling must bring them back — their own settings
+  // objects don't change identity when the master toggle flips, so without
+  // this dependency they would silently stay dead until app restart.
   useEffect(() => {
+    if (!masterEnabled) return;
     const timer = setTimeout(() => { rescheduleJumuah(); }, 300);
     return () => clearTimeout(timer);
-  }, [rescheduleJumuah]);
+  }, [rescheduleJumuah, masterEnabled]);
 
   useEffect(() => {
+    if (!masterEnabled) return;
     const timer = setTimeout(() => { rescheduleSurahKahf(); }, 300);
     return () => clearTimeout(timer);
-  }, [rescheduleSurahKahf]);
+  }, [rescheduleSurahKahf, masterEnabled]);
 
   // Set up notification click listener
   useEffect(() => {

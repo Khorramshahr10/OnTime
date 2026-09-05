@@ -21,14 +21,43 @@ export interface TrackingData {
   records: PrayerRecord[];
 }
 
+// Day keys use the LOCAL calendar date, not UTC (toISOString): east of UTC,
+// between local midnight and the UTC offset hour, the UTC date is still
+// yesterday, which would file last night's Isha under yesterday and show
+// today's rows with stale checkmarks. Prayer days roll over at local midnight.
+function localDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 // Get today's date as YYYY-MM-DD
 export function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0];
+  return localDateKey(new Date());
 }
 
 // Get date key for a specific date
 export function getDateKey(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return localDateKey(date);
+}
+
+// Records written before the UTC→local day-key change carry a UTC-derived
+// `date`, which no longer matches the local key lookups use — east of UTC that
+// silently orphans every prayer tracked between local midnight and the offset
+// hour. `trackedAt` is the authoritative instant, so the right key is
+// recoverable; recomputing is a no-op for records already written locally.
+function withLocalDateKeys(data: TrackingData): TrackingData {
+  let changed = false;
+  const records = data.records.map((record) => {
+    const trackedAt = new Date(record.trackedAt);
+    if (Number.isNaN(trackedAt.getTime())) return record;
+    const localKey = localDateKey(trackedAt);
+    if (localKey === record.date) return record;
+    changed = true;
+    return { ...record, date: localKey };
+  });
+  if (changed) saveTrackingData({ records });
+  return { records };
 }
 
 // Load all tracking data
@@ -36,7 +65,7 @@ export async function loadTrackingData(): Promise<TrackingData> {
   try {
     const { value } = await Preferences.get({ key: TRACKING_KEY });
     if (value) {
-      return JSON.parse(value) as TrackingData;
+      return withLocalDateKeys(JSON.parse(value) as TrackingData);
     }
   } catch (error) {
     console.error('Failed to load tracking data:', error);

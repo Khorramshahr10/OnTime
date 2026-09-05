@@ -7,6 +7,9 @@ const CLOUD_FILENAME = 'latest.jpg';
 const CLOUD_PATH = `${CLOUD_SUBDIR}/${CLOUD_FILENAME}`;
 const CLOUD_DATE_KEY = 'ontime_cloud_imagery_date';
 
+/** Cloud-mask working width; see extractCloudAlpha. 512×256 = 1/16th the work. */
+const CLOUD_MASK_MAX_WIDTH = 512;
+
 /**
  * NASA GIBS TrueColor mosaic. Verified by hand: returns image/jpeg,
  * access-control-allow-origin: *. There is no clean cloud-only layer in
@@ -111,10 +114,15 @@ export async function getCloudImagery(now: Date): Promise<CloudImageResult> {
  */
 export function extractCloudAlpha(image: HTMLImageElement): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
+  // Downscaled first: at the source 2048×1024 this loop is two million
+  // iterations on the main thread, and it runs exactly when the globe is
+  // loading — a visible freeze. The output is a soft, semi-transparent cloud
+  // overlay stretched over a whole planet, so the lost resolution doesn't read.
+  const scale = Math.min(1, CLOUD_MASK_MAX_WIDTH / (image.naturalWidth || 1));
+  canvas.width = Math.max(1, Math.round((image.naturalWidth || 1) * scale));
+  canvas.height = Math.max(1, Math.round((image.naturalHeight || 1) * scale));
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(image, 0, 0);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
   const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const px = frame.data;

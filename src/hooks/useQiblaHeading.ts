@@ -21,21 +21,25 @@ export interface QiblaHeadingState {
 /**
  * Owns the compass for the qibla screen so the dial and the globe read from
  * one sensor listener rather than two.
+ *
+ * `enabled` gates the sensor: QiblaCompass stays mounted for the app's whole
+ * lifetime, and running the magnetometer from launch (even when the qibla
+ * screen is never opened) is a permanent battery drain.
  */
-export function useQiblaHeading(): QiblaHeadingState {
+export function useQiblaHeading(enabled = true): QiblaHeadingState {
   const { qiblaDirection, deviceHeading, accuracy, error, startListening, stopListening } = useQibla();
   const supported = Capacitor.isNativePlatform();
   const wasAligned = useRef(false);
 
   useEffect(() => {
-    if (!supported) return;
+    if (!supported || !enabled) return;
     startListening();
     return () => {
       stopListening();
     };
-    // Started once for the life of the screen; the hook re-reads location itself.
+    // Started once per open of the screen; the hook re-reads location itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supported]);
+  }, [supported, enabled]);
 
   // Derived here rather than taken from the hook's `rotationAngle`: that value
   // is computed inside the sensor callback, which captured the bearing as it

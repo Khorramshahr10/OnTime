@@ -63,6 +63,9 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
   const isFriday = new Date().getDay() === 5;
   const jumuahEnabled = isFriday && settings.jumuah.enabled && settings.jumuah.times.length > 0;
 
+  // Reload when the displayed day's prayers change — the list rolls over at
+  // local midnight, and stale checkmarks from yesterday would otherwise be
+  // drawn against today's rows until something else forced a re-render.
   useEffect(() => {
     async function loadStatus() {
       const status: Record<string, PrayerStatus> = {};
@@ -72,7 +75,7 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
       setTrackingStatus(status);
     }
     loadStatus();
-  }, []);
+  }, [prayers]);
 
   const displayPrayers = prayers.filter((p) => {
     if (CORE_PRAYERS.includes(p.name as PrayerName)) return true;
@@ -93,6 +96,16 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
     await trackPrayer(prayer, status);
     setTrackingStatus((prev) => ({ ...prev, [prayer]: status }));
     setSelectedPrayer(null);
+  };
+
+  const trackBoth = async (first: PrayerName, second: PrayerName, status: PrayerStatus) => {
+    for (const prayer of [first, second]) {
+      try {
+        await handleTrack(prayer, status);
+      } catch (error) {
+        console.error(`Failed to track ${prayer}:`, error);
+      }
+    }
   };
 
   const renderPrayers = () => {
@@ -131,9 +144,12 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
               highlightKey={highlightKey as AllPrayerNames}
               trackingStatus1={trackingStatus[prayer.name] || 'untracked'}
               trackingStatus2={trackingStatus[pairPrayer.name] || 'untracked'}
-              onTrack={(status) => {
-                handleTrack(prayer.name as PrayerName, status);
-                handleTrack(pairPrayer.name as PrayerName, status);
+              onTrack={async (status) => {
+                // Sequential: each trackPrayer is load→mutate→save, so parallel
+                // calls read the same snapshot and one write overwrites the other.
+                // Caught per write: onTrack is a void prop nobody awaits, so a
+                // rejection would both skip the pair and surface unhandled.
+                await trackBoth(prayer.name as PrayerName, pairPrayer.name as PrayerName, status);
               }}
               travelState={travelState}
               startParts={startParts}

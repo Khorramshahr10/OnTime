@@ -126,7 +126,7 @@ export function enumerateTiles(window: LatLonWindow, z: number): TileRef[] {
   const y0 = Math.max(0, Math.floor(Math.min(latToTileY(latTop, z), latToTileY(latBottom, z))));
   const y1 = Math.min(n - 1, Math.ceil(Math.max(latToTileY(latTop, z), latToTileY(latBottom, z))));
 
-  let xStart = Math.floor(lonToTileX(normalizeLon(window.longitude - window.lonHalf), z));
+  const xStart = Math.floor(lonToTileX(normalizeLon(window.longitude - window.lonHalf), z));
   let xEnd = Math.ceil(lonToTileX(normalizeLon(window.longitude + window.lonHalf), z));
   if (xEnd <= xStart) xEnd += n; // window wrapped across the antimeridian
 
