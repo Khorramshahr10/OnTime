@@ -1,8 +1,23 @@
 diff --git a/node_modules/three-globe/dist/three-globe.mjs b/node_modules/three-globe/dist/three-globe.mjs
-index cc53c4e..821da06 100644
+index cc53c4e..264aaaf 100644
 --- a/node_modules/three-globe/dist/three-globe.mjs
 +++ b/node_modules/three-globe/dist/three-globe.mjs
-@@ -1220,7 +1220,12 @@ var ArcsLayerKapsule = Kapsule({
+@@ -688,7 +688,13 @@ var GlobeLayerKapsule = Kapsule({
+     var globeMaterial = state.globeObj.material;
+ 
+     // Hide globeObj if it's representing tiles
+-    state.tileEngine.visible = !(state.globeObj.visible = !state.globeTileEngineUrl);
++    // Upstream hides the image sphere whenever a tile engine is set. Keep it:
++    // it is the surface under tiles that have not arrived yet (the tile engine
++    // otherwise shows its own black inner sphere there). The app pushes the
++    // sphere a hair behind the tiles with polygonOffset so tiles win the depth
++    // test wherever they exist.
++    state.tileEngine.visible = !!state.globeTileEngineUrl;
++    state.globeObj.visible = true;
+     if (changedProps.hasOwnProperty('globeCurvatureResolution')) {
+       var _state$globeObj$geome;
+       (_state$globeObj$geome = state.globeObj.geometry) === null || _state$globeObj$geome === void 0 || _state$globeObj$geome.dispose();
+@@ -1220,7 +1226,12 @@ var ArcsLayerKapsule = Kapsule({
      var tweenGroup = _ref.tweenGroup;
      return {
        tweenGroup: tweenGroup,
@@ -16,7 +31,7 @@ index cc53c4e..821da06 100644
        sharedMaterial: new THREE$e.ShaderMaterial(_objectSpread2(_objectSpread2({}, dashedLineShaders()), {}, {
          transparent: true,
          blending: THREE$e.NormalBlending
-@@ -1242,7 +1247,8 @@ var ArcsLayerKapsule = Kapsule({
+@@ -1242,7 +1253,8 @@ var ArcsLayerKapsule = Kapsule({
        return obj;
      });
  
@@ -26,7 +41,7 @@ index cc53c4e..821da06 100644
      state.ticker.onTick.add(function (_, timeDelta) {
        state.dataMapper.entries().map(function (_ref2) {
          var _ref3 = _slicedToArray(_ref2, 2),
-@@ -2705,7 +2711,8 @@ var PathsLayerKapsule = Kapsule({
+@@ -2705,7 +2717,8 @@ var PathsLayerKapsule = Kapsule({
      var tweenGroup = _ref.tweenGroup;
      return {
        tweenGroup: tweenGroup,
@@ -36,7 +51,7 @@ index cc53c4e..821da06 100644
        sharedMaterial: new THREE$8.ShaderMaterial(_objectSpread2(_objectSpread2({}, dashedLineShaders()), {}, {
          transparent: true,
          blending: THREE$8.NormalBlending
-@@ -2727,7 +2734,8 @@ var PathsLayerKapsule = Kapsule({
+@@ -2727,7 +2740,8 @@ var PathsLayerKapsule = Kapsule({
        return obj;
      });
  

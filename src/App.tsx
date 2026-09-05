@@ -126,7 +126,9 @@ function App() {
 
   const isIslamic = settings.designStyle === 'islamic';
   const isGlobeHome = settings.homeView === 'globe';
-  const showGlobeLayer = isGlobeHome && !isQiblaOpen && !isDashboardOpen && !isSettingsOpen;
+  // The overlays are opaque and full-screen, so the globe stays mounted under
+  // them (parked, hidden) rather than being rebuilt every time one closes.
+  const globeCovered = isQiblaOpen || isDashboardOpen || isSettingsOpen;
   const headerGlowVars = isGlobeHome
     ? ({ '--color-muted': 'rgba(245,246,248,0.65)', '--color-text': 'rgba(245,246,248,0.95)' } as React.CSSProperties)
     : undefined;
@@ -148,7 +150,7 @@ function App() {
         </>
       )}
 
-      {showGlobeLayer && <HomeGlobeScreen prayers={prayers} />}
+      {isGlobeHome && <HomeGlobeScreen prayers={prayers} covered={globeCovered} />}
 
       <div className={`max-w-lg mx-auto w-full flex-1 relative z-10 ${isGlobeHome ? 'pointer-events-none' : 'overflow-y-auto'}`}>
         {/* Top Bar - sticky below status bar */}

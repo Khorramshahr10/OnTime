@@ -25,7 +25,9 @@ vi.mock('../plugins/athanPlugin', () => ({
 }));
 
 vi.mock('../components/HomeGlobeScreen', () => ({
-  HomeGlobeScreen: () => <div data-testid="home-globe-screen" />,
+  HomeGlobeScreen: ({ covered }: { covered?: boolean }) => (
+    <div data-testid="home-globe-screen" data-covered={String(!!covered)} />
+  ),
 }));
 
 // jsdom has no WebGL; stand in for the three.js layer so SunDomeCard's lazy
@@ -118,7 +120,22 @@ describe('User story: I can switch between List and Globe home views', () => {
     expect(await screen.findByTestId('home-globe-screen')).toBeInTheDocument();
   });
 
-  it('hides the globe layer while the Qibla compass is open', async () => {
+  it('keeps the globe mounted but covered while the Qibla compass is open, so returning is instant', async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      renderApp({ homeView: 'globe' });
+    });
+    const globe = await screen.findByTestId('home-globe-screen');
+    expect(globe).toHaveAttribute('data-covered', 'false');
+
+    await user.click(screen.getByLabelText('Open qibla compass'));
+
+    // Still the same mounted layer — flagged covered, not torn down and rebuilt.
+    expect(screen.getByTestId('home-globe-screen')).toHaveAttribute('data-covered', 'true');
+  });
+
+  it('flags the globe covered while Settings is open', async () => {
     const user = userEvent.setup();
 
     await act(async () => {
@@ -126,10 +143,9 @@ describe('User story: I can switch between List and Globe home views', () => {
     });
     await screen.findByTestId('home-globe-screen');
 
-    const qiblaBtn = screen.getByLabelText('Open qibla compass');
-    await user.click(qiblaBtn);
+    await user.click(screen.getByLabelText('Open settings'));
 
-    expect(screen.queryByTestId('home-globe-screen')).not.toBeInTheDocument();
+    expect(screen.getByTestId('home-globe-screen')).toHaveAttribute('data-covered', 'true');
   });
 
   it('portals the location map popup outside the header in Globe mode, so it does not inherit the glow HUD text colors', async () => {

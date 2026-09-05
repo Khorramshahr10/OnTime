@@ -1,19 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { HomeGlobeScreen } from '../components/HomeGlobeScreen';
+import { GLOBE_LOADER_FADE_MS } from '../components/GlobeLoader';
 import { renderWithProviders } from '../test/helpers';
 
 const received: unknown[] = [];
 const receivedProps: Array<{ data: unknown; fallback?: unknown }> = [];
-vi.mock('../components/three/Scenes', () => ({
-  HomeGlobeView: (props: { data: unknown; fallback?: unknown }) => {
-    received.push(props.data);
-    receivedProps.push(props);
-    return <div data-testid="home-globe" />;
-  },
-}));
+// Stand-in for the mounted HomeGlobe instance: the screen assigns its
+// callbacks onto this and drives it through setCovered().
+const fakeView = {
+  onGroundModeChange: undefined as ((v: boolean) => void) | undefined,
+  onSurfaceReady: undefined as (() => void) | undefined,
+  setCovered: vi.fn(),
+};
+vi.mock('../components/three/Scenes', async () => {
+  const { useEffect } = await import('react');
+  return {
+    HomeGlobeView: (props: { data: unknown; fallback?: unknown; onView?: (v: unknown) => void }) => {
+      received.push(props.data);
+      receivedProps.push(props);
+      useEffect(() => {
+        props.onView?.(fakeView);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return <div data-testid="home-globe" />;
+    },
+  };
+});
 
-const renderScreen = () => renderWithProviders(<HomeGlobeScreen prayers={[]} />);
+const renderScreen = (covered?: boolean) =>
+  renderWithProviders(<HomeGlobeScreen prayers={[]} covered={covered} />);
 
 beforeAll(() => {
   // ThemeProvider (pulled in by renderWithProviders) listens for the system
@@ -80,5 +96,35 @@ describe('HomeGlobeScreen', () => {
     const { container } = renderScreen();
     await waitFor(() => expect(received.length).toBeGreaterThan(0));
     expect(container.textContent).toContain('Imagery © Esri');
+  });
+
+  describe('User story: I see something while the globe is still loading', () => {
+    it('shows the Basmala loader until the globe reports its surface is up, then fades and removes it', async () => {
+      renderScreen();
+      // Visible from the very first paint, before the lazy chunk resolves.
+      expect(screen.getByTestId('globe-loader')).toHaveAttribute('data-state', 'visible');
+      expect(screen.getByTestId('globe-loader').textContent).toContain('بِسْمِ');
+
+      await waitFor(() => expect(fakeView.onSurfaceReady).toBeTypeOf('function'));
+      vi.useFakeTimers();
+      act(() => fakeView.onSurfaceReady!());
+      expect(screen.getByTestId('globe-loader')).toHaveAttribute('data-state', 'fading');
+
+      act(() => { vi.advanceTimersByTime(GLOBE_LOADER_FADE_MS + 50); });
+      expect(screen.queryByTestId('globe-loader')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('User story: opening Settings or Qibla does not rebuild the globe', () => {
+    it('hides the layer and puts the view to sleep while covered, and wakes it when uncovered', async () => {
+      const { container, rerender } = renderScreen(true);
+      await waitFor(() => expect(fakeView.setCovered).toHaveBeenCalledWith(true));
+      const wrapper = container.firstElementChild as HTMLElement;
+      expect(wrapper.style.visibility).toBe('hidden');
+
+      rerender(<HomeGlobeScreen prayers={[]} covered={false} />);
+      await waitFor(() => expect(fakeView.setCovered).toHaveBeenLastCalledWith(false));
+      expect(wrapper.style.visibility).not.toBe('hidden');
+    });
   });
 });

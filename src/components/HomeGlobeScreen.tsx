@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from '../context/LocationContext';
 import { useQibla } from '../hooks/useQibla';
+import { GlobeLoader, GLOBE_LOADER_FADE_MS } from './GlobeLoader';
 import type { PrayerTime } from '../types';
 import type { HomeGlobe } from './three/homeGlobe';
 
@@ -25,13 +26,30 @@ const SPACE_BACKDROP = 'radial-gradient(ellipse at 50% 40%, #0d1424 0%, #03050a 
  * day/night terminator, live clouds. Purely visual — the header and
  * countdown HUD render on top of this as siblings in App.tsx, not inside it.
  */
-export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
+export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerTime[]; covered?: boolean }) {
   const { location } = useLocation();
   const [now, setNow] = useState(() => new Date());
   const [groundMode, setGroundMode] = useState(false);
   const { deviceHeading, qiblaDirection, accuracy, error, startListening, stopListening } = useQibla();
   const smoothRot = useRef<number | null>(null);
   const [rot, setRot] = useState(0);
+  const viewRef = useRef<HomeGlobe | null>(null);
+  const coveredRef = useRef(covered);
+  // The loader stays up until the globe has drawn its first complete frame,
+  // then fades and is unmounted (its animations must not outlive the load).
+  const [surfaceReady, setSurfaceReady] = useState(false);
+  const [loaderGone, setLoaderGone] = useState(false);
+
+  useEffect(() => {
+    coveredRef.current = covered;
+    viewRef.current?.setCovered(covered);
+  }, [covered]);
+
+  useEffect(() => {
+    if (!surfaceReady) return;
+    const t = setTimeout(() => setLoaderGone(true), GLOBE_LOADER_FADE_MS);
+    return () => clearTimeout(t);
+  }, [surfaceReady]);
 
   // The sun moves a quarter of a degree a minute; a per-minute tick is
   // plenty, lined up with the start of each minute so it never drifts.
@@ -48,17 +66,20 @@ export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
     return () => clearTimeout(timeout);
   }, []);
 
-  // Run the compass only while in ground view.
+  // Run the compass only while in ground view — and not under an overlay.
   useEffect(() => {
-    if (groundMode) startListening();
+    if (groundMode && !covered) startListening();
     else {
       stopListening();
       smoothRot.current = null;
     }
-  }, [groundMode, startListening, stopListening]);
+  }, [groundMode, covered, startListening, stopListening]);
 
   const onView = useCallback((view: HomeGlobe) => {
+    viewRef.current = view;
     view.onGroundModeChange = setGroundMode;
+    view.onSurfaceReady = () => setSurfaceReady(true);
+    view.setCovered(coveredRef.current);
   }, []);
 
   // Smoothed degrees still to turn (positive = to your right). Updated in an
@@ -83,7 +104,12 @@ export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
   }, [groundMode, accuracy, deviceHeading, qiblaDirection]);
 
   return (
-    <div className="absolute inset-0 z-0" aria-hidden="true" style={{ background: SPACE_BACKDROP }}>
+    <div
+      className="absolute inset-0 z-0"
+      aria-hidden="true"
+      style={{ background: SPACE_BACKDROP, visibility: covered ? 'hidden' : 'visible' }}
+    >
+      {!loaderGone && <GlobeLoader fading={surfaceReady} />}
       <Suspense fallback={null}>
         <HomeGlobeView
           data={{
@@ -95,7 +121,16 @@ export function HomeGlobeScreen({ prayers }: { prayers: PrayerTime[] }) {
             deviceHeading,
             qiblaDirection,
           }}
-          style={{ display: 'block', width: '100%', height: '100%' }}
+          // Cross-fades in against the loader once the first complete frame
+          // exists — until then the canvas holds a black sphere with the
+          // prayer lines already drawn on it, which is not a globe yet.
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            opacity: surfaceReady ? 1 : 0,
+            transition: `opacity ${GLOBE_LOADER_FADE_MS}ms ease-out`,
+          }}
           fallback={<div className="absolute inset-0" style={{ background: SPACE_BACKDROP }} />}
           onView={onView}
         />

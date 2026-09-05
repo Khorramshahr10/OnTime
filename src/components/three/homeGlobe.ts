@@ -50,6 +50,8 @@ const MAX_DISTANCE = 3500;
 // NASA Blue Marble (public domain), bundled so the globe always has a complete
 // earth under the streamed tiles — including on a cold start and offline.
 const BASE_EARTH_TEXTURE_URL = '/earth-base.jpg';
+// See prepareBaseMaterial(): the base sphere sits just inside the tile shell.
+const BASE_SPHERE_SCALE = 0.998;
 
 // How long the render loop keeps running after something changes the scene,
 // before it parks again. The initial one is longer to cover the first wave of
@@ -471,10 +473,7 @@ export class HomeGlobe {
       cam.near = 1;
       cam.far = 30000;
       cam.updateProjectionMatrix();
-      // Same reason the GIBS swap below does it: the streamed tiles have to
-      // draw over the base sphere rather than z-fight it.
-      const baseMat = this.globe.globeMaterial() as THREE.MeshPhongMaterial;
-      if (baseMat) baseMat.depthWrite = false;
+      this.prepareBaseMaterial();
       this.enableTilesOnceBaseIsUp();
       this.buildExtras();
       // Aim the camera first, so the cloud layer fetches the tiles around
@@ -582,6 +581,58 @@ export class HomeGlobe {
 
   private tilesEnabled = false;
 
+  /**
+   * The base sphere (bundled earth, later the GIBS photo) stays visible under
+   * the tile mosaic (three-globe patch), so it must lose the depth test
+   * wherever a tile exists. Tiles sit at exactly the same radius, and a
+   * polygon offset alone still sparkled at this camera distance (24-bit depth
+   * over a 1..30000 range is coarse out here), so the sphere is scaled a
+   * fifth of a percent inward instead: a real geometric gap, invisible at the
+   * limb, still outside the tile engine's black inner sphere at 0.99.
+   */
+  private prepareBaseMaterial(): void {
+    const mat = this.globe?.globeMaterial() as THREE.MeshPhongMaterial | undefined;
+    if (!mat) return;
+    mat.depthWrite = true;
+    mat.needsUpdate = true;
+    this.globe.scene().traverse((obj) => {
+      if ((obj as THREE.Mesh).material === mat) obj.scale.setScalar(BASE_SPHERE_SCALE);
+    });
+  }
+
+  /** Fired once, on the first frame drawn with the base earth on the surface. */
+  onSurfaceReady?: () => void;
+  private surfaceReadyFired = false;
+  /** True while a full-screen overlay hides the globe (see setCovered). */
+  private covered = false;
+
+  /**
+   * A full-screen overlay (Settings, Qibla, Dashboard) now sits on top of the
+   * globe instead of unmounting it, so returning is instant. While covered the
+   * globe must cost nothing: the loop is parked and wake() refuses to restart
+   * it. Uncovering draws one frame so any minute tick that happened
+   * underneath is on screen, then parks again.
+   */
+  setCovered(covered: boolean): void {
+    if (this.covered === covered) return;
+    this.covered = covered;
+    if (covered) {
+      if (this.idlePauseTimer) clearTimeout(this.idlePauseTimer);
+      this.globe?.pauseAnimation();
+    } else {
+      this.renderThenSettle();
+    }
+  }
+
+  private fireSurfaceReady(): void {
+    if (this.surfaceReadyFired) return;
+    this.surfaceReadyFired = true;
+    // Next frame, not now: the texture is on the material but not yet drawn.
+    requestAnimationFrame(() => {
+      if (!this.disposed) this.onSurfaceReady?.();
+    });
+  }
+
   /** Start streaming surface tiles, but only after the base earth texture is
    *  on the material — see the globeImageUrl note in mount(). */
   private enableTilesOnceBaseIsUp(): void {
@@ -594,6 +645,7 @@ export class HomeGlobe {
   private enableTiles(): void {
     if (this.tilesEnabled || this.disposed || !this.globe) return;
     this.tilesEnabled = true;
+    this.fireSurfaceReady();
     this.globe.globeTileEngineUrl(
       (x, y, l) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${l}/${y}/${x}`
     );
@@ -1000,7 +1052,7 @@ export class HomeGlobe {
 
   /** Keep the render loop running now, and cancel any pending idle pause. */
   private wake(): void {
-    if (this.disposed || !this.globe) return;
+    if (this.disposed || !this.globe || this.covered) return;
     this.globe.resumeAnimation();
     if (this.idlePauseTimer) {
       clearTimeout(this.idlePauseTimer);
@@ -1273,12 +1325,11 @@ export class HomeGlobe {
         // Web Mercator tiles stop at ±85° latitude, so the polar caps have no
         // surface tiles and would otherwise render as a black "hole". Use the
         // same-day full-globe photo as the base sphere so the poles (and any
-        // brief tile-loading gaps) show real imagery. depthWrite=false keeps
-        // the tiled surface z-fighting-free on top of it.
+        // brief tile-loading gaps) show real imagery. prepareBaseMaterial()
+        // keeps the tiles winning the depth test on top of it.
         const dataUrl = `data:image/jpeg;base64,${result.base64Jpeg}`;
         this.globe.globeImageUrl(dataUrl);
-        const baseMat = this.globe.globeMaterial() as THREE.MeshPhongMaterial;
-        if (baseMat) baseMat.depthWrite = false;
+        this.prepareBaseMaterial();
 
         const img = new Image();
         img.onload = () => {
