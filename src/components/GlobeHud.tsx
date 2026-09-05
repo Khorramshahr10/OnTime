@@ -1,4 +1,4 @@
-import { PRAYER_COLORS } from '../utils/prayerColors';
+import { PRAYER_ACCENTS } from '../utils/prayerColors';
 import { sunnahSummary } from '../utils/sunnah';
 import { formatTime } from '../services/prayerService';
 import type { PrayerName, TravelState, DisplaySettings } from '../types';
@@ -63,9 +63,11 @@ export function GlobeHud({
   const heroName = showNext ? nextLabel : (currentIsHero ? capitalize(currentPrayer!) : null);
   const heroTime = showNext ? nextPrayerTime : currentPrayerTime;
 
+  // The light weight: this rule sits on the HUD's dark scrim, where the deeper
+  // shade the globe's lines use would disappear.
   const accentKey = showNext ? nextPrayer : currentPrayer;
-  const accent = accentKey && accentKey in PRAYER_COLORS
-    ? PRAYER_COLORS[accentKey as PrayerName]
+  const accent = accentKey && accentKey in PRAYER_ACCENTS
+    ? PRAYER_ACCENTS[accentKey as PrayerName]
     : MUTED;
 
   let sinceText: string | null = null;

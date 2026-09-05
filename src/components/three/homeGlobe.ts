@@ -25,7 +25,7 @@ import {
   type LatLonWindow,
 } from '../../services/earthTiles';
 import { getCloudImagery, extractCloudAlpha } from '../../services/cloudImagery';
-import { PRAYER_COLORS } from '../../utils/prayerColors';
+import { PRAYER_COLORS, PRAYER_ACCENTS } from '../../utils/prayerColors';
 
 export interface HomeGlobeData {
   now: Date;
@@ -121,12 +121,12 @@ const SOLAR_LINE_WIDTH_PX = 3.5;
 
 // Shared with the globe HUD so the accent beside a prayer's name and its line
 // on the earth are the same colour.
+// One circle serves each pair — the terminator is both sunrise and sunset, the
+// twilight circle both fajr and isha — so only four of the six draw a line.
 const FAJR_COLOR = PRAYER_COLORS.fajr;
 const SUNRISE_COLOR = PRAYER_COLORS.sunrise;
 const NOON_COLOR = PRAYER_COLORS.dhuhr;
 const ASR_COLOR = PRAYER_COLORS.asr;
-const SUNSET_COLOR = PRAYER_COLORS.maghrib;
-const ISHA_COLOR = PRAYER_COLORS.isha;
 
 const NIGHT_SHADE_ALTITUDE = 0.005;
 const GIBS_CLOUD_ALTITUDE = 0.012;
@@ -186,26 +186,45 @@ function meridianPoints(lon: number, radius: number, segments = 64): THREE.Vecto
   return pts;
 }
 
-/** A small world-scaled text label for a sun line. */
+/**
+ * A small world-scaled text label for a sun line, drawn on its own dark pill.
+ *
+ * These labels ride the equator, so some sit on sunlit cloud and ice (Dhuhr,
+ * Asr) and others on the night side (Fajr, Isha) — no single text colour is
+ * legible on both, and a soft drop shadow over white cloud just turned to
+ * mush. The pill gives every label the same dark ground to sit on, which is
+ * what map labels do, and lets the text keep the prayer's own hue.
+ */
 function prayerLabelSprite(text: string, color: string): THREE.Sprite {
   const px = 30;
+  const padX = 16;
+  const padY = 11;
   const canvas = document.createElement('canvas');
   const measure = canvas.getContext('2d')!;
   measure.font = `500 ${px}px Ubuntu, system-ui, sans-serif`;
-  const w = Math.ceil(measure.measureText(text).width) + 18;
-  canvas.width = w;
-  canvas.height = px + 18;
+  const w = Math.ceil(measure.measureText(text).width);
+  canvas.width = w + padX * 2;
+  canvas.height = px + padY * 2;
   const ctx = canvas.getContext('2d')!;
+
+  const r = canvas.height / 2;
+  ctx.fillStyle = 'rgba(4,7,14,0.66)';
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(0, 0, canvas.width, canvas.height, r);
+    ctx.fill();
+  } else {
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   ctx.font = `500 ${px}px Ubuntu, system-ui, sans-serif`;
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.9)';
-  ctx.shadowBlur = 8;
   ctx.fillStyle = color;
-  ctx.fillText(text, 9, canvas.height / 2);
+  ctx.fillText(text, padX, canvas.height / 2);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  const worldHeight = 7;
+  const worldHeight = 8; // the pill's padding is inside this, so a touch taller
   sp.scale.set((canvas.width / canvas.height) * worldHeight, worldHeight, 1);
   return sp;
 }
@@ -1336,12 +1355,13 @@ export class HomeGlobe {
     addFatLine(meridianPoints(sunLon, radius), NOON_COLOR, 1, MERIDIAN_WIDTH_PX);
 
     // Morning prayers are west of the sub-solar meridian, evening ones east.
-    addLabel(0, sunLon - TWILIGHT_ANGLE_DEG, fmt('fajr'), FAJR_COLOR);
-    addLabel(0, sunLon - HORIZON_ANGLE_DEG, fmt('sunrise'), SUNRISE_COLOR);
-    addLabel(0, sunLon, fmt('dhuhr'), NOON_COLOR);
-    addLabel(0, sunLon + ASR_ANGLE_DEG, fmt('asr'), ASR_COLOR);
-    addLabel(0, sunLon + HORIZON_ANGLE_DEG, fmt('maghrib'), SUNSET_COLOR);
-    addLabel(0, sunLon + TWILIGHT_ANGLE_DEG, fmt('isha'), ISHA_COLOR);
+    // Label text takes the light weight — it sits on the pill's dark ground.
+    addLabel(0, sunLon - TWILIGHT_ANGLE_DEG, fmt('fajr'), PRAYER_ACCENTS.fajr);
+    addLabel(0, sunLon - HORIZON_ANGLE_DEG, fmt('sunrise'), PRAYER_ACCENTS.sunrise);
+    addLabel(0, sunLon, fmt('dhuhr'), PRAYER_ACCENTS.dhuhr);
+    addLabel(0, sunLon + ASR_ANGLE_DEG, fmt('asr'), PRAYER_ACCENTS.asr);
+    addLabel(0, sunLon + HORIZON_ANGLE_DEG, fmt('maghrib'), PRAYER_ACCENTS.maghrib);
+    addLabel(0, sunLon + TWILIGHT_ANGLE_DEG, fmt('isha'), PRAYER_ACCENTS.isha);
   }
 
   private updatePin(): void {

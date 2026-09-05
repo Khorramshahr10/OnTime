@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { GlobeHud } from '../components/GlobeHud';
-import { PRAYER_COLORS } from '../utils/prayerColors';
+import { PRAYER_ACCENTS } from '../utils/prayerColors';
 import type { DisplaySettings } from '../types';
 
 const ALL_ON: DisplaySettings = { showCurrentPrayer: true, showNextPrayer: true, showSunnahCard: true };
@@ -44,7 +44,7 @@ describe('User story: at a glance on the globe I see what is next and how long',
   it('accents with the same colour the prayer is drawn in on the globe', () => {
     const { container } = renderHud();
     const rule = container.querySelector('[aria-hidden="true"]') as HTMLElement;
-    expect(rule).toHaveStyle({ background: PRAYER_COLORS.asr });
+    expect(rule).toHaveStyle({ background: PRAYER_ACCENTS.asr });
   });
 
   it('leaves the countdown calm with more than 20 minutes to go', () => {
