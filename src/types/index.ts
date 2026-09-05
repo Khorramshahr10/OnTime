@@ -115,6 +115,12 @@ export interface TravelSettings {
   maxTravelDays: number;              // 4, 10, 15, or 0=unlimited
   travelStartDate: string | null;     // ISO date
   autoConfirmed: boolean;             // user confirmed current auto-detected trip
+  /**
+   * "Not now" on the travel offer, or Travel Mode switched off by hand. Kept in
+   * settings rather than component state so the offer does not return on every
+   * launch; cleared automatically on arriving home.
+   */
+  promptDismissed?: boolean;
 }
 
 export interface TravelState {

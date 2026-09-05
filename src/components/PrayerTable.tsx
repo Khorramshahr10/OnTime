@@ -50,6 +50,12 @@ function getSunnahPrayers(isTraveling: boolean): Partial<Record<AllPrayerNames, 
   return isTraveling ? SUNNAH_PRAYERS_TRAVEL : SUNNAH_PRAYERS_DEFAULT;
 }
 
+/** Rak'ah in this prayer right now: shortened while travelling, except Maghrib. */
+function rakatFor(name: AllPrayerNames, travelState: TravelState): string {
+  if (travelState.qasr[name as keyof typeof travelState.qasr]) return '2';
+  return name === 'maghrib' ? '3' : '4';
+}
+
 export const PrayerTable = React.memo(function PrayerTable({ prayers, currentPrayer }: PrayerTableProps) {
   const { settings } = useSettings();
   const { travelState } = useTravel();
@@ -260,6 +266,10 @@ function JamaPrayerRow({ prayer, pairPrayer, isHighlighted, highlightGradient, t
   const [showTrackingPrompt, setShowTrackingPrompt] = useState(false);
 
   const isPassed = pairPrayer.time <= new Date();
+  // Render "1:53 — 5:29 PM" rather than printing PM twice: a jama pair almost
+  // always shares a half of the day, and this row is tight enough that the
+  // second meridiem pushed the rak'ah badge onto a line of its own.
+  const sharesMeridiem = !!startParts && !!endParts && startParts[2].toUpperCase() === endParts[2].toUpperCase();
 
   const bothOnTime = trackingStatus1 === 'ontime' && trackingStatus2 === 'ontime';
   const anyMissed = trackingStatus1 === 'missed' || trackingStatus2 === 'missed';
@@ -316,17 +326,14 @@ function JamaPrayerRow({ prayer, pairPrayer, isHighlighted, highlightGradient, t
           ${!isHighlighted ? 'hover:bg-[var(--color-background)] active:scale-[0.98]' : 'hover:bg-white/10'}
         `}
       >
+        {/* One name and one badge for the pair. Two names each with their own
+            rak'ah badge overflowed the row, orphaning the last badge onto a
+            line of its own. */}
         <span className={`font-semibold text-xl ${isHighlighted ? 'text-white' : 'text-[var(--color-text)]'}`}>
-          {prayer.label}
+          {prayer.label} + {pairPrayer.label}
         </span>
-        <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600">
-          {travelState.qasr[prayer.name as keyof typeof travelState.qasr] ? '2' : prayer.name === 'maghrib' ? '3' : '4'} rak'ah
-        </span>
-        <span className={`font-semibold text-xl ${isHighlighted ? 'text-white' : 'text-[var(--color-text)]'}`}>
-          + {pairPrayer.label}
-        </span>
-        <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600">
-          {travelState.qasr[pairPrayer.name as keyof typeof travelState.qasr] ? '2' : pairPrayer.name === 'maghrib' ? '3' : '4'} rak'ah
+        <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 whitespace-nowrap">
+          {rakatFor(prayer.name, travelState)} + {rakatFor(pairPrayer.name, travelState)} rak'ah
         </span>
         {renderStatusIndicator()}
       </div>
@@ -356,7 +363,9 @@ function JamaPrayerRow({ prayer, pairPrayer, isHighlighted, highlightGradient, t
         ) : (
           <span className={`font-semibold text-xl whitespace-nowrap ${isHighlighted ? 'text-white/90' : 'text-[var(--color-muted)]'}`}>
             {startParts ? startParts[1] : startFmt}
-            <span className={`text-sm ml-0.5 uppercase ${isHighlighted ? 'text-white/70' : ''}`}>{startParts ? startParts[2] : ''}</span>
+            {!sharesMeridiem && (
+              <span className={`text-sm ml-0.5 uppercase ${isHighlighted ? 'text-white/70' : ''}`}>{startParts ? startParts[2] : ''}</span>
+            )}
             <span className={`text-sm mx-1 ${isHighlighted ? 'text-white/50' : 'text-[var(--color-muted)]'}`}>—</span>
             {endParts ? endParts[1] : endFmt}
             <span className={`text-sm ml-0.5 uppercase ${isHighlighted ? 'text-white/70' : ''}`}>{endParts ? endParts[2] : ''}</span>

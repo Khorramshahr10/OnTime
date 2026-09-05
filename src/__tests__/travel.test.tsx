@@ -177,3 +177,80 @@ describe('User story: The app detects when I am traveling and adjusts my prayers
     expect(captured!.jamaMaghribIsha).toBe(true);
   });
 });
+
+describe('User story: the app offers travel mode when I have gone far from home', () => {
+  const TORONTO = { latitude: 43.6532, longitude: -79.3832, cityName: 'Toronto' };
+  const homeInMecca = (over: Record<string, unknown> = {}) => ({
+    travel: {
+      enabled: false,
+      homeBase: { coordinates: { latitude: 21.4225, longitude: 39.8262 }, cityName: 'Mecca' },
+      override: 'auto',
+      distanceThresholdKm: 88.7,
+      jamaDhuhrAsr: false,
+      jamaMaghribIsha: false,
+      maxTravelDays: 0,
+      travelStartDate: null,
+      autoConfirmed: false,
+      ...over,
+    },
+  });
+
+  it('offers travel when far from home even though the switch was never turned on', async () => {
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => { r = renderTravel(homeInMecca(), TORONTO); });
+    const captured = r.getCaptured()!;
+    // The offer is raised by distance alone — this is the case that used to be
+    // unreachable, because detection sat behind the Travel Mode switch.
+    expect(captured.travelPending).toBe(true);
+    // ...but nothing is shortened until it is accepted.
+    expect(captured.isTraveling).toBe(false);
+    expect(captured.qasr.dhuhr).toBe(false);
+  });
+
+  it('does not offer while still near home', async () => {
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => {
+      r = renderTravel(homeInMecca(), { latitude: 21.43, longitude: 39.83, cityName: 'Mecca' });
+    });
+    expect(r.getCaptured()!.travelPending).toBe(false);
+  });
+
+  it('stays quiet once the offer has been dismissed', async () => {
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => { r = renderTravel(homeInMecca({ promptDismissed: true }), TORONTO); });
+    const captured = r.getCaptured()!;
+    expect(captured.travelPending).toBe(false);
+    expect(captured.isTraveling).toBe(false);
+  });
+
+  it('stays quiet when travel has been forced off', async () => {
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => { r = renderTravel(homeInMecca({ override: 'force_off' }), TORONTO); });
+    expect(r.getCaptured()!.travelPending).toBe(false);
+  });
+
+  it('shortens prayers once the offer has been accepted', async () => {
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => {
+      r = renderTravel(homeInMecca({ enabled: true, autoConfirmed: true }), TORONTO);
+    });
+    const captured = r.getCaptured()!;
+    expect(captured.isTraveling).toBe(true);
+    expect(captured.isAutoDetected).toBe(true);
+    expect(captured.qasr.dhuhr).toBe(true);
+    expect(captured.travelPending).toBe(false);
+  });
+
+  it('does not shorten prayers on a fresh trip from a stale confirmation once home', async () => {
+    // Arriving home clears the previous trip's confirmation, so the next
+    // journey is offered rather than silently switching qasr on.
+    let r!: ReturnType<typeof renderTravel>;
+    await act(async () => {
+      r = renderTravel(
+        homeInMecca({ enabled: true, autoConfirmed: true }),
+        { latitude: 21.43, longitude: 39.83, cityName: 'Mecca' },
+      );
+    });
+    expect(r.getCaptured()!.isTraveling).toBe(false);
+  });
+});

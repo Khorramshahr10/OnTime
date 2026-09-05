@@ -31,13 +31,14 @@ const CONTROL_STYLE: CSSProperties = {
   WebkitBackdropFilter: 'blur(10px)',
   textShadow: '0 1px 6px rgba(0,0,0,0.6)',
 };
-/** Ground view is a mode, not an action — lit in the qibla line's own cyan. */
+/* Ground view is a mode, not an action — lit in the qibla line's own cyan.
+   Parked alongside its commented-out button below.
 const CONTROL_ACTIVE_STYLE: CSSProperties = {
   ...CONTROL_STYLE,
   background: 'rgba(34,211,238,0.18)',
   border: '1px solid rgba(34,211,238,0.5)',
   color: '#a5f3fc',
-};
+}; */
 
 /**
  * Full-page ambient background for the Home Globe view: starfield, earth,
@@ -170,14 +171,17 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
           card colours, which render as white lozenges over the globe in a light
           theme. The wrapper stays click-through so it never eats a drag. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 flex justify-center gap-2 px-3">
-        <button
+        {/* Ground view is switched off for now — the machinery below (groundMode,
+            the compass guidance, HomeGlobe's ground camera) is left intact, so
+            restoring it is just this button. */}
+        {/* <button
           onClick={() => setGroundMode((v) => !v)}
           className={CONTROL_CLASS}
           style={groundMode ? CONTROL_ACTIVE_STYLE : CONTROL_STYLE}
           aria-pressed={groundMode}
         >
           {groundMode ? 'Exit ground' : 'Ground view'}
-        </button>
+        </button> */}
         <button onClick={() => viewRef.current?.focusOnLocation()} className={CONTROL_CLASS} style={CONTROL_STYLE}>
           My location
         </button>

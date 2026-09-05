@@ -54,6 +54,12 @@ function getSunnahPrayers(isTraveling: boolean) {
   return isTraveling ? SUNNAH_PRAYERS_TRAVEL : SUNNAH_PRAYERS_DEFAULT;
 }
 
+/** Rak'ah in this prayer right now: shortened while travelling, except Maghrib. */
+function rakatFor(name: AllPrayerNames, travelState: TravelState): string {
+  if (travelState.qasr[name as keyof typeof travelState.qasr]) return '2';
+  return name === 'maghrib' ? '3' : '4';
+}
+
 export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ prayers, currentPrayer }: IslamicPrayerTableProps) {
   const { settings } = useSettings();
   const { travelState } = useTravel();
@@ -248,6 +254,7 @@ interface IslamicJamaRowProps {
 function IslamicJamaRow({ prayer, pairPrayer, isHighlighted, highlightKey, trackingStatus1, trackingStatus2, onTrack, travelState, startParts, startFmt, endParts, endFmt }: IslamicJamaRowProps) {
   const [showTrackingPrompt, setShowTrackingPrompt] = useState(false);
   const isPassed = pairPrayer.time <= new Date();
+  const sharesMeridiem = !!startParts && !!endParts && startParts[2].toUpperCase() === endParts[2].toUpperCase();
   const bothOnTime = trackingStatus1 === 'ontime' && trackingStatus2 === 'ontime';
   const anyMissed = trackingStatus1 === 'missed' || trackingStatus2 === 'missed';
 
@@ -293,23 +300,16 @@ function IslamicJamaRow({ prayer, pairPrayer, isHighlighted, highlightKey, track
             }}/>
 
             <div className="min-w-0 flex items-baseline gap-1.5 flex-wrap" style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              {/* One name and one badge for the pair — two of each overflowed
+                  the row and orphaned the last badge onto its own line. */}
               <span className="text-[22px] leading-tight tracking-wide" style={{
                 fontFamily: '"Cormorant Garamond", serif', fontWeight: 500,
                 color: isHighlighted ? '#fff' : 'var(--color-text)',
                 textShadow: isHighlighted ? '0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(0,0,0,0.3)' : 'none',
                 opacity: isPassed && !isHighlighted ? 0.55 : 1,
-              }}>{prayer.label}</span>
-              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600">
-                {travelState.qasr[prayer.name as keyof typeof travelState.qasr] ? '2' : prayer.name === 'maghrib' ? '3' : '4'} rak'ah
-              </span>
-              <span className="text-[22px] leading-tight tracking-wide" style={{
-                fontFamily: '"Cormorant Garamond", serif', fontWeight: 500,
-                color: isHighlighted ? '#fff' : 'var(--color-text)',
-                textShadow: isHighlighted ? '0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(0,0,0,0.3)' : 'none',
-                opacity: isPassed && !isHighlighted ? 0.55 : 1,
-              }}>+ {pairPrayer.label}</span>
-              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600">
-                {travelState.qasr[pairPrayer.name as keyof typeof travelState.qasr] ? '2' : pairPrayer.name === 'maghrib' ? '3' : '4'} rak'ah
+              }}>{prayer.label} + {pairPrayer.label}</span>
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 whitespace-nowrap">
+                {rakatFor(prayer.name, travelState)} + {rakatFor(pairPrayer.name, travelState)} rak'ah
               </span>
             </div>
 
@@ -321,8 +321,11 @@ function IslamicJamaRow({ prayer, pairPrayer, isHighlighted, highlightKey, track
               opacity: isPassed && !isHighlighted ? 0.6 : isHighlighted ? 1 : 0.85,
               textShadow: isHighlighted ? '0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(0,0,0,0.3)' : 'none',
             }}>
+              {/* One meridiem for the pair — see PrayerTable's jama row. */}
               {startParts ? startParts[1] : startFmt}
-              <span className="text-[10px] ml-0.5 uppercase">{startParts ? startParts[2] : ''}</span>
+              {!sharesMeridiem && (
+                <span className="text-[10px] ml-0.5 uppercase">{startParts ? startParts[2] : ''}</span>
+              )}
               <span className="mx-0.5 opacity-50">&ndash;</span>
               {endParts ? endParts[1] : endFmt}
               <span className="text-[10px] ml-0.5 uppercase">{endParts ? endParts[2] : ''}</span>

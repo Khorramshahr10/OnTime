@@ -89,7 +89,7 @@ const STAR_COUNT = 1400;
 const STAR_RADIUS = 4000;
 
 const PIN_ALTITUDE = 0.035;
-const PIN_SIZE_PX = 20; // on-screen diameter of the location marker
+const PIN_SIZE_PX = 50; // on-screen diameter of the location marker
 const PIN_COLOR = '#4285F4';
 
 /** Radius of the sun-position lines, just above the surface tiles. */

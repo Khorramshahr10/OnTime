@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from 'react';
 import { useSettings } from './SettingsContext';
 import { useLocation } from './LocationContext';
 import { calculateDistanceKm } from '../utils/distance';
@@ -32,18 +32,15 @@ export function TravelProvider({ children }: { children: ReactNode }) {
   const { location } = useLocation();
   const [dismissed, setDismissed] = useState(false);
 
-  // Track previous distance to auto-reset autoConfirmed when returning home
-  const prevDistanceRef = useRef<number | null>(null);
-
   const travelState = useMemo<TravelState>(() => {
     const { travel } = settings;
 
-    if (!travel.enabled || !travel.homeBase) {
-      return defaultTravelState;
-    }
-
-    // Force overrides
-    if (travel.override === 'force_off') {
+    // Detection needs somewhere to measure from, and force_off is the opt-out.
+    // It deliberately does NOT require travel.enabled: that switch defaulted to
+    // off, so the feature meant to notice a journey could only ever run once the
+    // user had already found and enabled it by hand. Being far from home is what
+    // raises the offer now; accepting the offer is what switches travel on.
+    if (!travel.homeBase || travel.override === 'force_off') {
       return defaultTravelState;
     }
 
@@ -58,16 +55,13 @@ export function TravelProvider({ children }: { children: ReactNode }) {
 
     if (travel.override === 'force_on') {
       isTraveling = true;
-    } else {
-      // Auto detection with confirmation
-      const aboveThreshold = distance >= travel.distanceThresholdKm;
-      if (aboveThreshold && travel.autoConfirmed) {
+    } else if (distance >= travel.distanceThresholdKm) {
+      if (travel.enabled && travel.autoConfirmed) {
         isTraveling = true;
         isAutoDetected = true;
-      } else if (aboveThreshold && !travel.autoConfirmed) {
-        travelPending = !dismissed;
-        isTraveling = false;
-        isAutoDetected = false;
+      } else if (!dismissed && !travel.promptDismissed) {
+        // Offer it — qasr is never applied without an explicit yes.
+        travelPending = true;
       }
     }
 
@@ -107,30 +101,27 @@ export function TravelProvider({ children }: { children: ReactNode }) {
     };
   }, [settings, location, dismissed]);
 
-  // Auto-reset autoConfirmed when user returns home (distance drops below threshold)
+  // Home again: forget this trip's confirmation and any "not now", so the next
+  // journey is offered afresh. Deliberately keyed on being below the threshold
+  // rather than on having crossed it: the previous distance lived in a ref, so
+  // after a restart the first reading was always treated as "no previous" and
+  // the reset was skipped — leaving a stale confirmation that would silently
+  // switch qasr on at the start of the next trip, with no prompt.
   useEffect(() => {
     const { travel } = settings;
-    if (!travel.enabled || !travel.homeBase) return;
+    if (!travel.homeBase) return;
 
     const distance = calculateDistanceKm(
       travel.homeBase.coordinates,
       location.coordinates,
     );
+    if (distance >= travel.distanceThresholdKm) return;
 
-    const prevDistance = prevDistanceRef.current;
-    prevDistanceRef.current = distance;
-
-    // If previously above threshold and now below, reset
-    if (
-      travel.autoConfirmed &&
-      prevDistance !== null &&
-      prevDistance >= travel.distanceThresholdKm &&
-      distance < travel.distanceThresholdKm
-    ) {
-      updateTravel({ autoConfirmed: false, travelStartDate: null });
-      setDismissed(false);
+    if (travel.autoConfirmed || travel.promptDismissed) {
+      updateTravel({ autoConfirmed: false, travelStartDate: null, promptDismissed: false });
     }
-  }, [settings, location, updateTravel]);
+    if (dismissed) setDismissed(false);
+  }, [settings, location, updateTravel, dismissed]);
 
   function setHomeBase(home: HomeBaseLocation) {
     updateTravel({ homeBase: home });
@@ -163,19 +154,25 @@ export function TravelProvider({ children }: { children: ReactNode }) {
     if (newEnabled && !settings.travel.travelStartDate) {
       updates.travelStartDate = new Date().toISOString().split('T')[0];
     }
+    // Switching it off by hand also means "stop asking" until I'm home again.
+    if (!newEnabled) updates.promptDismissed = true;
     updateTravel(updates);
   }
 
   function confirmTravel() {
     updateTravel({
+      enabled: true,
       autoConfirmed: true,
       travelStartDate: new Date().toISOString().split('T')[0],
+      promptDismissed: false,
     });
     setDismissed(false);
   }
 
   function dismissTravel() {
     setDismissed(true);
+    // Persisted too, so "Not now" survives a restart instead of asking again.
+    updateTravel({ promptDismissed: true });
   }
 
   return (

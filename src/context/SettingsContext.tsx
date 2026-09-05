@@ -47,6 +47,7 @@ export const defaultTravelSettings: TravelSettings = {
   maxTravelDays: 0,
   travelStartDate: null,
   autoConfirmed: false,
+  promptDismissed: false,
 };
 
 const defaultSettings: Settings = {
