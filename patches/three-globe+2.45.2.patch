@@ -1,0 +1,48 @@
+diff --git a/node_modules/three-globe/dist/three-globe.mjs b/node_modules/three-globe/dist/three-globe.mjs
+index cc53c4e..821da06 100644
+--- a/node_modules/three-globe/dist/three-globe.mjs
++++ b/node_modules/three-globe/dist/three-globe.mjs
+@@ -1220,7 +1220,12 @@ var ArcsLayerKapsule = Kapsule({
+     var tweenGroup = _ref.tweenGroup;
+     return {
+       tweenGroup: tweenGroup,
+-      ticker: new FrameTicker$2(),
++      // Created paused: a FrameTicker starts its rAF loop in its constructor, and
++      // stateInit also runs for the throw-away instance fromKapsule() builds at
++      // module load purely to enumerate method names. That instance is never
++      // init'd or destroyed, so its ticker would spin at display rate forever
++      // with no listeners. init() resumes the ticker for real instances.
++      ticker: new FrameTicker$2(NaN, NaN, true),
+       sharedMaterial: new THREE$e.ShaderMaterial(_objectSpread2(_objectSpread2({}, dashedLineShaders()), {}, {
+         transparent: true,
+         blending: THREE$e.NormalBlending
+@@ -1242,7 +1247,8 @@ var ArcsLayerKapsule = Kapsule({
+       return obj;
+     });
+ 
+-    // Kick-off dash animations
++    // Kick-off dash animations (ticker is created paused in stateInit)
++    state.ticker.resume();
+     state.ticker.onTick.add(function (_, timeDelta) {
+       state.dataMapper.entries().map(function (_ref2) {
+         var _ref3 = _slicedToArray(_ref2, 2),
+@@ -2705,7 +2711,8 @@ var PathsLayerKapsule = Kapsule({
+     var tweenGroup = _ref.tweenGroup;
+     return {
+       tweenGroup: tweenGroup,
+-      ticker: new FrameTicker$1(),
++      // Created paused — see the arcs layer for why. init() resumes it.
++      ticker: new FrameTicker$1(NaN, NaN, true),
+       sharedMaterial: new THREE$8.ShaderMaterial(_objectSpread2(_objectSpread2({}, dashedLineShaders()), {}, {
+         transparent: true,
+         blending: THREE$8.NormalBlending
+@@ -2727,7 +2734,8 @@ var PathsLayerKapsule = Kapsule({
+       return obj;
+     });
+ 
+-    // Kick-off dash animations
++    // Kick-off dash animations (ticker is created paused in stateInit)
++    state.ticker.resume();
+     state.ticker.onTick.add(function (_, timeDelta) {
+       state.dataMapper.entries().map(function (_ref2) {
+         var _ref3 = _slicedToArray(_ref2, 2),
