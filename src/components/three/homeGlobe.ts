@@ -25,6 +25,7 @@ import {
   type LatLonWindow,
 } from '../../services/earthTiles';
 import { getCloudImagery, extractCloudAlpha } from '../../services/cloudImagery';
+import { PRAYER_COLORS } from '../../utils/prayerColors';
 
 export interface HomeGlobeData {
   now: Date;
@@ -118,12 +119,14 @@ const TERMINATOR_WIDTH_PX = 5;
 const MERIDIAN_WIDTH_PX = 4.5;
 const SOLAR_LINE_WIDTH_PX = 3.5;
 
-const FAJR_COLOR = '#818cf8'; // indigo (pre-dawn)
-const SUNRISE_COLOR = '#fb923c'; // warm orange (sunrise)
-const NOON_COLOR = '#22d3ee'; // bright cyan (dhuhr, solar noon)
-const ASR_COLOR = '#f472b6'; // bright pink (afternoon)
-const SUNSET_COLOR = '#f87171'; // red-orange (sunset/maghrib)
-const ISHA_COLOR = '#a78bfa'; // purple (night)
+// Shared with the globe HUD so the accent beside a prayer's name and its line
+// on the earth are the same colour.
+const FAJR_COLOR = PRAYER_COLORS.fajr;
+const SUNRISE_COLOR = PRAYER_COLORS.sunrise;
+const NOON_COLOR = PRAYER_COLORS.dhuhr;
+const ASR_COLOR = PRAYER_COLORS.asr;
+const SUNSET_COLOR = PRAYER_COLORS.maghrib;
+const ISHA_COLOR = PRAYER_COLORS.isha;
 
 const NIGHT_SHADE_ALTITUDE = 0.005;
 const GIBS_CLOUD_ALTITUDE = 0.012;

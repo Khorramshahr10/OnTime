@@ -109,6 +109,14 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
       aria-hidden="true"
       style={{ background: SPACE_BACKDROP, visibility: covered ? 'hidden' : 'visible' }}
     >
+      {/* One scrim for the whole top HUD (header + prayer info). The globe's
+          cloud tops are near-white, so light text over them survived on drop
+          shadows alone; this darkens the sky it sits on and fades out before
+          the earth's middle. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1]"
+        style={{ height: 340, background: 'linear-gradient(to bottom, rgba(3,5,10,0.82) 0%, rgba(3,5,10,0.55) 45%, transparent 100%)' }}
+      />
       {!loaderGone && <GlobeLoader fading={surfaceReady} />}
       <Suspense fallback={null}>
         <HomeGlobeView

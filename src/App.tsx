@@ -11,6 +11,7 @@ import { useSettings } from './context/SettingsContext';
 import { formatDistance } from './utils/distance';
 import { PrayerTable } from './components/PrayerTable';
 import { CountdownTimer } from './components/CountdownTimer';
+import { GlobeHud } from './components/GlobeHud';
 import { IslamicPrayerTable } from './components/IslamicPrayerTable';
 import { IslamicCountdownTimer } from './components/IslamicCountdownTimer';
 import { GirihBackground } from './components/IslamicPatterns';
@@ -133,7 +134,9 @@ function App() {
     ? ({ '--color-muted': 'rgba(245,246,248,0.65)', '--color-text': 'rgba(245,246,248,0.95)' } as React.CSSProperties)
     : undefined;
   const headerGlowBg: React.CSSProperties | undefined = isGlobeHome
-    ? { background: 'linear-gradient(to bottom, rgba(3,5,10,0.5), transparent)', backdropFilter: 'blur(6px)' }
+    // Darkening is the globe layer's single top scrim (see HomeGlobeScreen);
+    // the header only softens what shows through behind its icons.
+    ? { backdropFilter: 'blur(6px)' }
     : undefined;
 
   return (
@@ -296,7 +299,22 @@ function App() {
         {/* Current Prayer & Countdown */}
         {(currentPrayer || nextPrayer) && (
           <div className="mb-5">
-            {isIslamic ? (
+            {/* Over the globe the prayer info is one condensed unit rather than
+                the list view's three cards — see GlobeHud. */}
+            {isGlobeHome ? (
+              <GlobeHud
+                currentPrayer={currentPrayer}
+                currentPrayerTime={currentPrayer ? prayers.find(p => p.name === currentPrayer)?.time ?? null : null}
+                nextPrayer={nextPrayer}
+                nextPrayerTime={nextPrayerTime}
+                hours={countdown.hours}
+                minutes={countdown.minutes}
+                seconds={countdown.seconds}
+                isTraveling={travelState.isTraveling}
+                travelState={travelState}
+                display={settings.display}
+              />
+            ) : isIslamic ? (
               <IslamicCountdownTimer
                 currentPrayer={currentPrayer}
                 currentPrayerTime={currentPrayer ? prayers.find(p => p.name === currentPrayer)?.time ?? null : null}
@@ -308,7 +326,6 @@ function App() {
                 isTraveling={travelState.isTraveling}
                 travelState={travelState}
                 display={settings.display}
-                glow={isGlobeHome}
               />
             ) : (
               <CountdownTimer
@@ -322,7 +339,6 @@ function App() {
                 isTraveling={travelState.isTraveling}
                 travelState={travelState}
                 display={settings.display}
-                glow={isGlobeHome}
               />
             )}
           </div>
