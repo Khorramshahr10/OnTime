@@ -108,6 +108,8 @@ const GROUND_PITCH = 0.21;
 const HORIZON_ANGLE_DEG = 90; // sunrise / sunset (sun on the horizon)
 const TWILIGHT_ANGLE_DEG = 108; // fajr / isha (sun 18° below the horizon)
 const ASR_ANGLE_DEG = 45; // asr, standard method (sun ~45° altitude)
+/** Latitude offset that keeps neighbouring labels apart at the limb. */
+const LABEL_STAGGER_DEG = 18;
 /** Line + label colours, ordered dawn → night (chosen to contrast with the
  *  bright earth imagery as well as the dark space backdrop). */
 // Solar lines are drawn as fat lines (Line2): WebGL ignores LineBasicMaterial's
@@ -184,6 +186,26 @@ function meridianPoints(lon: number, radius: number, segments = 64): THREE.Vecto
     pts.push(new THREE.Vector3(p.x, p.y, p.z));
   }
   return pts;
+}
+
+/**
+ * Where a sun line's label sits: the point on that circle at a chosen latitude,
+ * on the morning (west, -1) or evening (east, +1) side.
+ *
+ * Fajr and sunrise are only 18° of longitude apart, and both land out near the
+ * limb where the sphere squashes longitude to almost nothing on screen, so
+ * their labels collided (maghrib and isha likewise). Latitude does not compress
+ * that way, so they are staggered vertically — and solved for properly rather
+ * than nudged, so each label still lands on its own circle. Null when the sun
+ * is too far north or south for the circle to reach that latitude at all.
+ */
+function labelPoint(sunLat: number, sunLon: number, thetaDeg: number, targetLat: number, side: 1 | -1) {
+  const theta = thetaDeg * D2R;
+  const sl = sunLat * D2R;
+  const tl = targetLat * D2R;
+  const cos = (Math.cos(theta) - Math.sin(sl) * Math.sin(tl)) / (Math.cos(sl) * Math.cos(tl));
+  if (!Number.isFinite(cos) || Math.abs(cos) > 1) return null;
+  return { lat: targetLat, lon: sunLon + side * (Math.acos(cos) / D2R) };
 }
 
 /**
@@ -1356,12 +1378,23 @@ export class HomeGlobe {
 
     // Morning prayers are west of the sub-solar meridian, evening ones east.
     // Label text takes the light weight — it sits on the pill's dark ground.
-    addLabel(0, sunLon - TWILIGHT_ANGLE_DEG, fmt('fajr'), PRAYER_ACCENTS.fajr);
-    addLabel(0, sunLon - HORIZON_ANGLE_DEG, fmt('sunrise'), PRAYER_ACCENTS.sunrise);
+    // The neighbouring pairs are staggered in latitude so they stop colliding
+    // at the limb; see labelPoint.
+    const at = (theta: number, lat: number, side: 1 | -1) =>
+      labelPoint(sunLat, sunLon, theta, lat, side) ?? { lat: 0, lon: sunLon + side * theta };
+    const S = LABEL_STAGGER_DEG;
+    const fajrAt = at(TWILIGHT_ANGLE_DEG, S, -1);
+    const sunriseAt = at(HORIZON_ANGLE_DEG, -S, -1);
+    const asrAt = at(ASR_ANGLE_DEG, 0, 1);
+    const maghribAt = at(HORIZON_ANGLE_DEG, -S, 1);
+    const ishaAt = at(TWILIGHT_ANGLE_DEG, S, 1);
+
+    addLabel(fajrAt.lat, fajrAt.lon, fmt('fajr'), PRAYER_ACCENTS.fajr);
+    addLabel(sunriseAt.lat, sunriseAt.lon, fmt('sunrise'), PRAYER_ACCENTS.sunrise);
     addLabel(0, sunLon, fmt('dhuhr'), PRAYER_ACCENTS.dhuhr);
-    addLabel(0, sunLon + ASR_ANGLE_DEG, fmt('asr'), PRAYER_ACCENTS.asr);
-    addLabel(0, sunLon + HORIZON_ANGLE_DEG, fmt('maghrib'), PRAYER_ACCENTS.maghrib);
-    addLabel(0, sunLon + TWILIGHT_ANGLE_DEG, fmt('isha'), PRAYER_ACCENTS.isha);
+    addLabel(asrAt.lat, asrAt.lon, fmt('asr'), PRAYER_ACCENTS.asr);
+    addLabel(maghribAt.lat, maghribAt.lon, fmt('maghrib'), PRAYER_ACCENTS.maghrib);
+    addLabel(ishaAt.lat, ishaAt.lon, fmt('isha'), PRAYER_ACCENTS.isha);
   }
 
   private updatePin(): void {

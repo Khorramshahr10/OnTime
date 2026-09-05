@@ -1,4 +1,7 @@
 import { Base3D, THREE, labelSprite, retintSprite } from './base3d';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { buildEarthTexture } from './earthTexture';
 import {
   D2R,
@@ -35,6 +38,8 @@ const COINCIDENT_DEG = 0.5;
 const FRAMING = 1.12;
 /** Label height in world units. */
 const LABEL_HEIGHT = 0.11;
+/** Screen pixels. The route is the point of this view, so it is drawn boldly. */
+const QIBLA_ARC_WIDTH_PX = 4;
 /** Labels fade out as they swing this far from the centre of the view. */
 const LABEL_FADE_START = Math.cos(52 * D2R);
 const LABEL_FADE_END = Math.cos(78 * D2R);
@@ -52,7 +57,7 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
   private routeGroup!: THREE.Group;
 
   private shellMat!: THREE.MeshBasicMaterial;
-  private arcMat!: THREE.LineBasicMaterial;
+  private arcMat!: LineMaterial;
   private homeMat!: THREE.MeshBasicMaterial;
   private kaabaMat!: THREE.MeshBasicMaterial;
 
@@ -77,8 +82,11 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
     this.refreshTexture();
 
     // Vertex-coloured so the line brightens as it approaches Makkah — the
-    // arc reads as a direction of travel rather than a drawn connection.
-    this.arcMat = new THREE.LineBasicMaterial({ vertexColors: true });
+    // arc reads as a direction of travel rather than a drawn connection. Drawn
+    // as a fat line: WebGL ignores LineBasicMaterial's linewidth, so the route
+    // was a single device pixel and all but invisible on the pale globe.
+    this.arcMat = new LineMaterial({ vertexColors: true, linewidth: QIBLA_ARC_WIDTH_PX });
+    this.updateArcResolution();
     this.homeMat = new THREE.MeshBasicMaterial({ color: HOME_COLOR });
     this.kaabaMat = new THREE.MeshBasicMaterial({ color: C.primary });
 
@@ -115,6 +123,7 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
     const distance = FRAMING / Math.sin(Math.min(vFov, hFov) / 2);
     this.setFramedDistance(distance);
     if (!this.isAdjusted()) this.camera.position.setLength(distance);
+    this.updateArcResolution();
   }
 
   protected tick(): void {
@@ -200,6 +209,12 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
   }
 
   /** Arc colours running from quiet at home to full strength at Makkah. */
+  /** Fat lines size themselves in screen pixels, so they need the canvas size. */
+  private updateArcResolution(): void {
+    const size = this.renderer?.getSize(new THREE.Vector2());
+    if (size) this.arcMat?.resolution.set(size.x, size.y);
+  }
+
   private arcColors(count: number): number[] {
     const from = new THREE.Color(this.colors.muted);
     const to = new THREE.Color(this.colors.primary);
@@ -243,9 +258,12 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
     }
 
     const arc = greatCircleArc({ latitude, longitude }, MECCA, 128, 1.008);
-    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arc.map(v3));
-    arcGeometry.setAttribute('color', new THREE.Float32BufferAttribute(this.arcColors(arc.length), 3));
-    this.routeGroup.add(new THREE.Line(arcGeometry, this.arcMat));
+    const flat: number[] = [];
+    for (const p of arc) flat.push(p.x, p.y, p.z);
+    const arcGeometry = new LineGeometry();
+    arcGeometry.setPositions(flat);
+    arcGeometry.setColors(this.arcColors(arc.length));
+    this.routeGroup.add(new Line2(arcGeometry, this.arcMat));
 
     const homeDot = new THREE.Mesh(new THREE.SphereGeometry(0.016, 20, 16), this.homeMat);
     homeDot.position.copy(v3(home)).multiplyScalar(1.01);
@@ -278,7 +296,13 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
       if (child instanceof THREE.Sprite) {
         child.material.map?.dispose();
         child.material.dispose();
-      } else if (child instanceof THREE.Mesh && child.material !== this.homeMat && child.material !== this.kaabaMat) {
+      } else if (
+        child instanceof THREE.Mesh
+        && child.material !== this.homeMat
+        && child.material !== this.kaabaMat
+        // Line2 is a Mesh, and the arc's material is long-lived like the dots'.
+        && child.material !== this.arcMat
+      ) {
         // Survey rings own their material; the dots share long-lived ones.
         (child.material as THREE.Material).dispose();
       }

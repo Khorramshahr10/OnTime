@@ -152,7 +152,8 @@ export function HomeGlobeView(props: {
 }
 
 export function KaabaMiniView(props: { className?: string; style?: CSSProperties }) {
-  return <SceneHost Scene={KaabaMini} data={undefined as void} {...props} />;
+  // A 96px decorative card: a "Reset view" button lands on top of the Kaaba.
+  return <SceneHost Scene={KaabaMini} data={undefined as void} {...props} hideControls />;
 }
 
 export type { SunDomeData, QiblaGlobeData, HomeGlobeData };
