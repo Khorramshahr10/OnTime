@@ -56,6 +56,8 @@ const BASE_EARTH_TEXTURE_URL = '/earth-base.jpg';
 // surface tiles, which arrive well after onGlobeReady.
 const INITIAL_SETTLE_MS = 4000;
 const SETTLE_MS = 1200;
+// Surface tiles start once the base texture is applied; this caps the wait.
+const TILE_ENABLE_FALLBACK_MS = 2500;
 
 const SUN_ALTITUDE = 20;
 const MOON_ALTITUDE = 20;
@@ -425,20 +427,28 @@ export class HomeGlobe {
 
     this.globe = new Globe(this.host, {
       rendererConfig: { alpha: true, antialias: true },
+      // three-globe's default intro scales the globe up from nothing and spins
+      // it for 1.2s on every mount — on a cold start (and on every return from
+      // an overlay) that reads as the globe being "rebuilt". Tiles come from
+      // the on-disk cache in well under a second, so just show it.
+      animateIn: false,
     })
       .backgroundColor('rgba(0,0,0,0)')
       // The tile engine parks an opaque black sphere just under the surface at
       // any level > 0, and only adds a tile once its image has downloaded — so
       // without a base texture every un-loaded tile reads as a black hole while
-      // the mosaic streams in. Bundled (not fetched) so it is up on the first
-      // frame and still works offline; the GIBS photo upgrades it on arrival.
+      // the mosaic streams in. Bundled (and preloaded from index.html) so it is
+      // decoded before the globe mounts and still works offline; the GIBS
+      // photo upgrades it on arrival. The tile engine itself is switched on in
+      // enableTilesOnceBaseIsUp(): started together, the tile flood (hundreds
+      // of decodes + GPU uploads) lands ahead of the base and the globe sits
+      // black for the first half second of every cold start.
       .globeImageUrl(BASE_EARTH_TEXTURE_URL)
       .showAtmosphere(true)
       .atmosphereColor('#4d7fbf')
-      .atmosphereAltitude(0.12)
-      .globeTileEngineUrl(
-        (x, y, l) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${l}/${y}/${x}`
-      );
+      .atmosphereAltitude(0.12);
+    // Safety net: never leave the surface tile-less if the base somehow fails.
+    setTimeout(() => this.enableTiles(), TILE_ENABLE_FALLBACK_MS);
 
     const controls = this.globe.controls();
     controls.autoRotate = false;
@@ -465,6 +475,7 @@ export class HomeGlobe {
       // draw over the base sphere rather than z-fight it.
       const baseMat = this.globe.globeMaterial() as THREE.MeshPhongMaterial;
       if (baseMat) baseMat.depthWrite = false;
+      this.enableTilesOnceBaseIsUp();
       this.buildExtras();
       // Aim the camera first, so the cloud layer fetches the tiles around
       // the user's location rather than the globe's default (0,0) point.
@@ -506,6 +517,7 @@ export class HomeGlobe {
     this.prevManagerOnLoad = THREE.DefaultLoadingManager.onLoad;
     THREE.DefaultLoadingManager.onLoad = () => {
       this.prevManagerOnLoad?.();
+      this.enableTilesOnceBaseIsUp();
       this.renderThenSettle();
     };
     this.syncLoop();
@@ -566,6 +578,25 @@ export class HomeGlobe {
       // next touches the globe.
       this.renderThenSettle();
     }
+  }
+
+  private tilesEnabled = false;
+
+  /** Start streaming surface tiles, but only after the base earth texture is
+   *  on the material — see the globeImageUrl note in mount(). */
+  private enableTilesOnceBaseIsUp(): void {
+    if (this.tilesEnabled || this.disposed) return;
+    const mat = this.globe?.globeMaterial() as THREE.MeshPhongMaterial | undefined;
+    if (!mat?.map) return;
+    this.enableTiles();
+  }
+
+  private enableTiles(): void {
+    if (this.tilesEnabled || this.disposed || !this.globe) return;
+    this.tilesEnabled = true;
+    this.globe.globeTileEngineUrl(
+      (x, y, l) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${l}/${y}/${x}`
+    );
   }
 
   /** Draw the change that was just applied, then let the loop idle again. */
