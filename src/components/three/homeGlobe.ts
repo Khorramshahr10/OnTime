@@ -109,6 +109,15 @@ const TWILIGHT_ANGLE_DEG = 108; // fajr / isha (sun 18° below the horizon)
 const ASR_ANGLE_DEG = 45; // asr, standard method (sun ~45° altitude)
 /** Line + label colours, ordered dawn → night (chosen to contrast with the
  *  bright earth imagery as well as the dark space backdrop). */
+// Solar lines are drawn as fat lines (Line2): WebGL ignores LineBasicMaterial's
+// linewidth, so a plain THREE.Line is always one device pixel — a third of a
+// CSS pixel on a 3x phone, which is what made these read as hairlines. Widths
+// are in CSS pixels and carry the hierarchy: the day/night terminator and the
+// noon meridian are the structure, twilight and asr support them.
+const TERMINATOR_WIDTH_PX = 5;
+const MERIDIAN_WIDTH_PX = 4.5;
+const SOLAR_LINE_WIDTH_PX = 3.5;
+
 const FAJR_COLOR = '#818cf8'; // indigo (pre-dawn)
 const SUNRISE_COLOR = '#fb923c'; // warm orange (sunrise)
 const NOON_COLOR = '#22d3ee'; // bright cyan (dhuhr, solar noon)
@@ -402,6 +411,8 @@ export class HomeGlobe {
   /** Ground-view qibla line + Kaaba marker. */
   private groundGroup!: THREE.Group;
   private groundLineMaterial?: LineMaterial;
+  /** Live solar-line materials, so resize() can refresh their pixel widths. */
+  private prayerLineMaterials: LineMaterial[] = [];
   private inGroundMode = false;
   /** Low-pass filtered compass heading (deg) to damp jitter. */
   private smoothHeading = -1;
@@ -1102,7 +1113,10 @@ export class HomeGlobe {
     this.globe?.width(w).height(h);
     // Fat lines need the canvas pixel size to compute their screen width.
     const size = this.globe?.renderer().getSize(new THREE.Vector2());
-    if (size) this.groundLineMaterial?.resolution.set(size.x, size.y);
+    if (size) {
+      this.groundLineMaterial?.resolution.set(size.x, size.y);
+      for (const m of this.prayerLineMaterials) m.resolution.set(size.x, size.y);
+    }
   }
 
   private buildExtras(): void {
@@ -1262,6 +1276,7 @@ export class HomeGlobe {
    */
   private rebuildPrayerLines(sunLat: number, sunLon: number): void {
     // Clear the previous lines + labels.
+    this.prayerLineMaterials.length = 0;
     for (const obj of [...this.prayerLinesGroup.children]) {
       this.prayerLinesGroup.remove(obj);
       if (obj instanceof THREE.Sprite) {
@@ -1295,19 +1310,27 @@ export class HomeGlobe {
       this.prayerLinesGroup.add(sprite);
     };
 
-    const addCircle = (thetaDeg: number, color: string, opacity: number) => {
-      const geo = new THREE.BufferGeometry().setFromPoints(sunAltitudeCircle(sunDir, thetaDeg, radius));
-      this.prayerLinesGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity })));
+    const size = this.globe.renderer().getSize(new THREE.Vector2());
+    const addFatLine = (points: THREE.Vector3[], color: string, opacity: number, widthPx: number) => {
+      const flat: number[] = [];
+      for (const p of points) flat.push(p.x, p.y, p.z);
+      const geo = new LineGeometry();
+      geo.setPositions(flat);
+      const mat = new LineMaterial({ color, linewidth: widthPx, transparent: true, opacity });
+      mat.resolution.set(size.x, size.y);
+      this.prayerLineMaterials.push(mat);
+      this.prayerLinesGroup.add(new Line2(geo, mat));
     };
+    const addCircle = (thetaDeg: number, color: string, opacity: number, widthPx: number) =>
+      addFatLine(sunAltitudeCircle(sunDir, thetaDeg, radius), color, opacity, widthPx);
 
     // Horizon (sunrise/sunset terminator), twilight (fajr/isha), Asr.
-    addCircle(HORIZON_ANGLE_DEG, SUNRISE_COLOR, 0.9);
-    addCircle(TWILIGHT_ANGLE_DEG, FAJR_COLOR, 0.55);
-    addCircle(ASR_ANGLE_DEG, ASR_COLOR, 0.8);
+    addCircle(HORIZON_ANGLE_DEG, SUNRISE_COLOR, 0.95, TERMINATOR_WIDTH_PX);
+    addCircle(TWILIGHT_ANGLE_DEG, FAJR_COLOR, 0.75, SOLAR_LINE_WIDTH_PX);
+    addCircle(ASR_ANGLE_DEG, ASR_COLOR, 0.85, SOLAR_LINE_WIDTH_PX);
 
     // Noon meridian (Dhuhr).
-    const noonGeo = new THREE.BufferGeometry().setFromPoints(meridianPoints(sunLon, radius));
-    this.prayerLinesGroup.add(new THREE.Line(noonGeo, new THREE.LineBasicMaterial({ color: NOON_COLOR, transparent: true, opacity: 1 })));
+    addFatLine(meridianPoints(sunLon, radius), NOON_COLOR, 1, MERIDIAN_WIDTH_PX);
 
     // Morning prayers are west of the sub-solar meridian, evening ones east.
     addLabel(0, sunLon - TWILIGHT_ANGLE_DEG, fmt('fajr'), FAJR_COLOR);
