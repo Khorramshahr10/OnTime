@@ -44,13 +44,13 @@ interface SceneHostProps<T> {
   style?: CSSProperties;
   /** Shown instead of the canvas if WebGL is unavailable. */
   fallback?: React.ReactNode;
-  /** A primary action button, always visible (e.g. "My location"). */
-  primaryAction?: { label: string; run: (view: SceneView<T>) => void };
+  /** Skip the built-in controls; the caller draws its own (see HomeGlobeScreen). */
+  hideControls?: boolean;
   /** Called with the mounted view, so a parent can set callbacks on it. */
   onView?: (view: SceneView<T>) => void;
 }
 
-function SceneHost<T>({ Scene, data, className, style, fallback = null, primaryAction, onView }: SceneHostProps<T>) {
+function SceneHost<T>({ Scene, data, className, style, fallback = null, hideControls, onView }: SceneHostProps<T>) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<SceneView<T> | null>(null);
   const dataRef = useRef(data);
@@ -102,26 +102,18 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null, primaryA
   return (
     <div className={className} style={addRelative ? { position: 'relative', ...style } : style}>
       <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} aria-hidden="true" />
-      <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
-        {primaryAction && (
+      {!hideControls && (
+        <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
           <button
-            onClick={() => viewRef.current && primaryAction.run(viewRef.current)}
+            onClick={reset}
             className="rounded-full px-3 py-1.5 text-xs font-medium
                        bg-[var(--color-card)] text-[var(--color-muted)]
                        border border-[var(--color-border)] shadow-sm"
           >
-            {primaryAction.label}
+            Reset view
           </button>
-        )}
-        <button
-          onClick={reset}
-          className="rounded-full px-3 py-1.5 text-xs font-medium
-                     bg-[var(--color-card)] text-[var(--color-muted)]
-                     border border-[var(--color-border)] shadow-sm"
-        >
-          Reset view
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -152,7 +144,9 @@ export function HomeGlobeView(props: {
       Scene={HomeGlobe}
       {...rest}
       onView={onView as unknown as (view: SceneView<HomeGlobeData>) => void}
-      primaryAction={{ label: 'My location', run: (view) => (view as HomeGlobe).focusOnLocation() }}
+      // The home globe styles its own cluster for the night sky — the card
+      // colours here would render as white pills over it.
+      hideControls
     />
   );
 }

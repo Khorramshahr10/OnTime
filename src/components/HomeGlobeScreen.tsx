@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation } from '../context/LocationContext';
 import { useQibla } from '../hooks/useQibla';
 import { GlobeLoader, GLOBE_LOADER_FADE_MS } from './GlobeLoader';
@@ -20,6 +20,24 @@ const HomeGlobeView = lazy(() =>
  * a blank rect.
  */
 const SPACE_BACKDROP = 'radial-gradient(ellipse at 50% 40%, #0d1424 0%, #03050a 70%)';
+
+/** Glass over the night sky, matching the HUD rather than the app's cards. */
+const CONTROL_CLASS = 'pointer-events-auto rounded-full px-3.5 py-2 text-[12.5px] font-medium leading-none';
+const CONTROL_STYLE: CSSProperties = {
+  background: 'rgba(10,15,26,0.55)',
+  border: '1px solid rgba(245,246,248,0.16)',
+  color: 'rgba(245,246,248,0.92)',
+  backdropFilter: 'blur(10px)',
+  WebkitBackdropFilter: 'blur(10px)',
+  textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+};
+/** Ground view is a mode, not an action — lit in the qibla line's own cyan. */
+const CONTROL_ACTIVE_STYLE: CSSProperties = {
+  ...CONTROL_STYLE,
+  background: 'rgba(34,211,238,0.18)',
+  border: '1px solid rgba(34,211,238,0.5)',
+  color: '#a5f3fc',
+};
 
 /**
  * Full-page ambient background for the Home Globe view: starfield, earth,
@@ -104,9 +122,11 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
   }, [groundMode, accuracy, deviceHeading, qiblaDirection]);
 
   return (
+    // Not aria-hidden as a whole: the view controls below are real buttons, and
+    // the ground-view guidance is spoken guidance. Only the decorative layers
+    // opt out.
     <div
       className="absolute inset-0 z-0"
-      aria-hidden="true"
       style={{ background: SPACE_BACKDROP, visibility: covered ? 'hidden' : 'visible' }}
     >
       {/* One scrim for the whole top HUD (header + prayer info). The globe's
@@ -114,6 +134,7 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
           shadows alone; this darkens the sky it sits on and fades out before
           the earth's middle. */}
       <div
+        aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 z-[1]"
         style={{ height: 340, background: 'linear-gradient(to bottom, rgba(3,5,10,0.82) 0%, rgba(3,5,10,0.55) 45%, transparent 100%)' }}
       />
@@ -144,15 +165,26 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
         />
       </Suspense>
 
-      {/* Ground-view (Qibla) toggle */}
-      <button
-        onClick={() => setGroundMode((v) => !v)}
-        className="absolute bottom-4 left-4 z-10 rounded-full px-3 py-1.5 text-xs font-medium
-                   bg-[var(--color-card)] text-[var(--color-muted)]
-                   border border-[var(--color-border)] shadow-sm"
-      >
-        {groundMode ? 'Exit ground' : 'Ground view'}
-      </button>
+      {/* View controls. One cluster rather than pills in opposite corners, and
+          styled for the night sky: the shared SceneHost buttons use the app's
+          card colours, which render as white lozenges over the globe in a light
+          theme. The wrapper stays click-through so it never eats a drag. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 flex justify-center gap-2 px-3">
+        <button
+          onClick={() => setGroundMode((v) => !v)}
+          className={CONTROL_CLASS}
+          style={groundMode ? CONTROL_ACTIVE_STYLE : CONTROL_STYLE}
+          aria-pressed={groundMode}
+        >
+          {groundMode ? 'Exit ground' : 'Ground view'}
+        </button>
+        <button onClick={() => viewRef.current?.focusOnLocation()} className={CONTROL_CLASS} style={CONTROL_STYLE}>
+          My location
+        </button>
+        <button onClick={() => viewRef.current?.resetView()} className={CONTROL_CLASS} style={CONTROL_STYLE}>
+          Reset view
+        </button>
+      </div>
 
       {/* Compass guidance while in ground view */}
       {groundMode && (
@@ -176,7 +208,7 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
 
       {/* Required attribution for the Esri + OpenWeatherMap tile layers. */}
       <div
-        className="absolute bottom-1 left-2 z-0 text-[9px] leading-tight text-white/35 pointer-events-none select-none"
+        className="absolute inset-x-0 bottom-1 px-3 z-0 text-[9px] leading-tight text-white/30 pointer-events-none select-none truncate"
         aria-hidden="true"
       >
         Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community · Clouds © OpenWeatherMap

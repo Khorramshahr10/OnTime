@@ -35,6 +35,7 @@ export function GlobeLoader({ fading = false }: { fading?: boolean }) {
     <div
       data-testid="globe-loader"
       data-state={fading ? 'fading' : 'visible'}
+      aria-hidden="true"
       className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center select-none"
       style={{ opacity: fading ? 0 : 1, transition: `opacity ${GLOBE_LOADER_FADE_MS}ms ease-out` }}
     >
