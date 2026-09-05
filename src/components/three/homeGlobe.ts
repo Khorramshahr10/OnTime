@@ -60,6 +60,12 @@ const INITIAL_SETTLE_MS = 4000;
 const SETTLE_MS = 1200;
 // Surface tiles start once the base texture is applied; this caps the wait.
 const TILE_ENABLE_FALLBACK_MS = 2500;
+// Esri World Imagery. Also matched against loading-manager URLs to tell a
+// surface tile apart from the app's own textures.
+const TILE_HOST = 'server.arcgisonline.com';
+// Longest the loader holds waiting for the first wave of tiles before
+// revealing whatever is there — offline, or a network too slow to wait on.
+const FIRST_TILES_MAX_WAIT_MS = 3000;
 
 const SUN_ALTITUDE = 20;
 const MOON_ALTITUDE = 20;
@@ -418,6 +424,9 @@ export class HomeGlobe {
   private io?: IntersectionObserver;
   private onVisibility = () => this.syncLoop();
   private prevManagerOnLoad?: () => void;
+  private prevManagerOnProgress?: (url: string, loaded: number, total: number) => void;
+  /** Set once a surface tile image has come through the loading manager. */
+  private sawTileTexture = false;
 
   constructor(host: HTMLElement, data: HomeGlobeData) {
     this.host = host;
@@ -513,10 +522,20 @@ export class HomeGlobe {
     // uses a bare TextureLoader), and they arrive long after the camera stopped
     // moving. With the loop now parking when idle, a tile landing after the park
     // would never be drawn — so render once more whenever loading goes quiet.
+    this.prevManagerOnProgress = THREE.DefaultLoadingManager.onProgress;
+    THREE.DefaultLoadingManager.onProgress = (url, loaded, total) => {
+      this.prevManagerOnProgress?.(url, loaded, total);
+      if (typeof url === 'string' && url.includes(TILE_HOST)) this.sawTileTexture = true;
+    };
     this.prevManagerOnLoad = THREE.DefaultLoadingManager.onLoad;
     THREE.DefaultLoadingManager.onLoad = () => {
       this.prevManagerOnLoad?.();
       this.enableTilesOnceBaseIsUp();
+      // Hold the loader until surface tiles have actually landed, not merely
+      // until the base texture is on: enabling the tile engine is what starts
+      // the tile fetch, so revealing there uncovers a globe that then visibly
+      // fills in tile by tile. This drains once the first wave is in.
+      if (this.tilesEnabled && this.sawTileTexture) this.fireSurfaceReady();
       this.renderThenSettle();
     };
     this.syncLoop();
@@ -645,9 +664,13 @@ export class HomeGlobe {
   private enableTiles(): void {
     if (this.tilesEnabled || this.disposed || !this.globe) return;
     this.tilesEnabled = true;
-    this.fireSurfaceReady();
+    // Setting the URL is what *starts* the tile fetch, so the surface is not
+    // ready yet — the loader stays up until the first wave of tiles is drawn
+    // (see the loading-manager hook in mount()). This caps the wait, for a
+    // slow network or a cold start with nothing cached and no connection.
+    setTimeout(() => this.fireSurfaceReady(), FIRST_TILES_MAX_WAIT_MS);
     this.globe.globeTileEngineUrl(
-      (x, y, l) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${l}/${y}/${x}`
+      (x, y, l) => `https://${TILE_HOST}/ArcGIS/rest/services/World_Imagery/MapServer/tile/${l}/${y}/${x}`
     );
   }
 
@@ -964,6 +987,9 @@ export class HomeGlobe {
     if (this.idlePauseTimer) clearTimeout(this.idlePauseTimer);
     document.removeEventListener('visibilitychange', this.onVisibility);
     THREE.DefaultLoadingManager.onLoad = this.prevManagerOnLoad as () => void;
+    THREE.DefaultLoadingManager.onProgress = this.prevManagerOnProgress as (
+      url: string, loaded: number, total: number,
+    ) => void;
     this.ro?.disconnect();
     this.io?.disconnect();
     this.globe?.pauseAnimation();
