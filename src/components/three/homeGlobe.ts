@@ -34,12 +34,21 @@ const HOME_ALTITUDE = 2.5; // default framing
 const FOCUS_ALTITUDE = 0.5; // "My location" fly-in
 const MIN_ALTITUDE = 0.06; // pinch floor, just above the atmosphere
 const MAX_DISTANCE = 3500;
+// Camera depth range. Far enough back for the starfield at 4000, and no
+// further: globe.gl's own default (skyRadius * 2.5 = 125000) spends most of
+// the depth buffer on empty space, leaving too little precision out here to
+// keep the base sphere and the tile shell apart.
+const CAMERA_NEAR = 1;
+const CAMERA_FAR = 30000;
 
 // NASA Blue Marble (public domain), bundled so the globe always has a complete
 // earth under the streamed tiles — including on a cold start and offline.
 const BASE_EARTH_TEXTURE_URL = '/earth-base.jpg';
 // See prepareBaseMaterial(): the base sphere sits just inside the tile shell.
 const BASE_SPHERE_SCALE = 0.998;
+// How many frames ensureBaseSetup() will wait for globe.gl's deferred init.
+// It lands on the next tick in practice; this is only a stop condition.
+const BASE_SETUP_MAX_FRAMES = 120;
 
 // How long the render loop keeps running after something changes the scene,
 // before it parks again. The initial one is longer to cover the first wave of
@@ -427,12 +436,7 @@ export class HomeGlobe {
     this.globe.onGlobeReady(() => {
       if (this.disposed) return;
       this.ready = true;
-      // Reach the starfield and sun/moon without z-fighting the surface.
-      const cam = this.globe.camera() as THREE.PerspectiveCamera;
-      cam.near = 1;
-      cam.far = 30000;
-      cam.updateProjectionMatrix();
-      this.prepareBaseMaterial();
+      this.ensureBaseSetup();
       this.enableTilesOnceBaseIsUp();
       this.buildExtras();
       // Aim the camera before the first paint so the surface tiles load
@@ -556,15 +560,57 @@ export class HomeGlobe {
    * over a 1..30000 range is coarse out here), so the sphere is scaled a
    * fifth of a percent inward instead: a real geometric gap, invisible at the
    * limb, still outside the tile engine's black inner sphere at 0.99.
+   *
+   * Returns false if the globe object is not in the render scene yet — see
+   * ensureBaseSetup(), which is what retries.
    */
-  private prepareBaseMaterial(): void {
+  private prepareBaseMaterial(): boolean {
     const mat = this.globe?.globeMaterial() as THREE.MeshPhongMaterial | undefined;
-    if (!mat) return;
+    if (!mat) return false;
     mat.depthWrite = true;
     mat.needsUpdate = true;
+    let base: THREE.Mesh | undefined;
     this.globe.scene().traverse((obj) => {
-      if ((obj as THREE.Mesh).material === mat) obj.scale.setScalar(BASE_SPHERE_SCALE);
+      if ((obj as THREE.Mesh).material === mat) base = obj as THREE.Mesh;
     });
+    if (!base) return false;
+    base.scale.setScalar(BASE_SPHERE_SCALE);
+    return true;
+  }
+
+  /**
+   * globe.gl applies its constructor-time props on a *debounced* update, and
+   * two of them matter here: `objects([globe])` is what puts the globe object
+   * into the render scene, and `skyRadius()` is what sets camera.far.
+   * three-globe's onGlobeReady fires off a timer of its own, so when the base
+   * texture comes back fast (cached, preloaded) it can land first — the render
+   * scene is still empty, prepareBaseMaterial() has nothing to scale, and the
+   * camera range set here is overwritten a tick later.
+   *
+   * The symptom is not subtle: the base sphere left at scale 1 is exactly
+   * coincident with the tile shell, and the Blue Marble ocean z-fights up
+   * through the Esri imagery as dark wedges all over the globe. So retry until
+   * the globe object is actually in the scene, then assert both.
+   */
+  private ensureBaseSetup(attempt = 0): void {
+    if (this.disposed) return;
+    if (!this.prepareBaseMaterial()) {
+      if (attempt < BASE_SETUP_MAX_FRAMES) {
+        requestAnimationFrame(() => this.ensureBaseSetup(attempt + 1));
+      }
+      return;
+    }
+    // Reached only once the deferred update has run, so this is the last word
+    // on the camera range rather than a value skyRadius will overwrite.
+    const cam = this.globe.camera() as THREE.PerspectiveCamera;
+    if (cam.near !== CAMERA_NEAR || cam.far !== CAMERA_FAR) {
+      cam.near = CAMERA_NEAR;
+      cam.far = CAMERA_FAR;
+      cam.updateProjectionMatrix();
+    }
+    // A late fix-up has to be drawn; onGlobeReady's own render already covers
+    // the first-attempt case.
+    if (attempt > 0) this.renderThenSettle();
   }
 
   /** Fired once, on the first frame drawn with the base earth on the surface. */
