@@ -99,12 +99,10 @@ const ASR_ANGLE_DEG = 45; // asr, standard method (sun ~45° altitude)
 const LABEL_STAGGER_DEG = 18;
 // Solar lines are drawn as fat lines (Line2): WebGL ignores LineBasicMaterial's
 // linewidth, so a plain THREE.Line is always one device pixel — a third of a
-// CSS pixel on a 3x phone, which is what made these read as hairlines. Widths
-// are in CSS pixels and carry the hierarchy: the day/night terminator and the
-// noon meridian are the structure, twilight and asr support them.
-const TERMINATOR_WIDTH_PX = 5;
-const MERIDIAN_WIDTH_PX = 4.5;
-const SOLAR_LINE_WIDTH_PX = 3.5;
+// CSS pixel on a 3x phone, which is what made these read as hairlines. One
+// width for all of them, in CSS pixels: the thinner twilight and asr rings
+// read as lesser lines rather than as a deliberate hierarchy.
+const SOLAR_LINE_WIDTH_PX = 5;
 
 // Shared with the globe HUD so the accent beside a prayer's name and its line
 // on the earth are the same colour.
@@ -222,7 +220,12 @@ function prayerLabelSprite(text: string, color: string): THREE.Sprite {
   ctx.fillText(text, padX, canvas.height / 2);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  // depthTest off so a label overhanging the globe is not sliced by it; the
+  // far side is culled by hand instead (see updateLabelAnchors).
+  const sp = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false })
+  );
+  sp.renderOrder = 6;
   const worldHeight = 8; // the pill's padding is inside this, so a touch taller
   sp.scale.set((canvas.width / canvas.height) * worldHeight, worldHeight, 1);
   return sp;
@@ -1214,12 +1217,12 @@ export class HomeGlobe {
       addFatLine(sunAltitudeCircle(sunDir, thetaDeg, radius), color, opacity, widthPx);
 
     // Horizon (sunrise/sunset terminator), twilight (fajr/isha), Asr.
-    addCircle(HORIZON_ANGLE_DEG, SUNRISE_COLOR, 0.95, TERMINATOR_WIDTH_PX);
+    addCircle(HORIZON_ANGLE_DEG, SUNRISE_COLOR, 0.95, SOLAR_LINE_WIDTH_PX);
     addCircle(TWILIGHT_ANGLE_DEG, FAJR_COLOR, 0.75, SOLAR_LINE_WIDTH_PX);
     addCircle(ASR_ANGLE_DEG, ASR_COLOR, 0.85, SOLAR_LINE_WIDTH_PX);
 
     // Noon meridian (Dhuhr).
-    addFatLine(meridianPoints(sunLon, radius), NOON_COLOR, 1, MERIDIAN_WIDTH_PX);
+    addFatLine(meridianPoints(sunLon, radius), NOON_COLOR, 1, SOLAR_LINE_WIDTH_PX);
 
     // Morning prayers are west of the sub-solar meridian, evening ones east.
     // Label text takes the light weight — it sits on the pill's dark ground.
@@ -1240,6 +1243,50 @@ export class HomeGlobe {
     addLabel(asrAt.lat, asrAt.lon, fmt('asr'), PRAYER_ACCENTS.asr);
     addLabel(maghribAt.lat, maghribAt.lon, fmt('maghrib'), PRAYER_ACCENTS.maghrib);
     addLabel(ishaAt.lat, ishaAt.lon, fmt('isha'), PRAYER_ACCENTS.isha);
+    this.updateLabelAnchors();
+  }
+
+  private labelNdc = new THREE.Vector3();
+  private labelWorld = new THREE.Vector3();
+
+  /**
+   * Keep each label inside the viewport, and out of the globe.
+   *
+   * A sprite is centred on its anchor, and these anchors sit out by the limb —
+   * which is also the edge of the screen — so half of "Isha 9:39 PM" hung off
+   * and was clipped. Sliding the sprite's own centre toward the near edge makes
+   * it grow inward instead, eased off the projected position so it never snaps.
+   *
+   * That alone traded one clipping for another: a label overhanging inward lies
+   * over a stretch of globe that is nearer the camera than the label's own
+   * plane, so the depth test ate the overhang. The sprites therefore skip depth
+   * testing entirely and are culled here by hand — hidden once their point on
+   * the sphere has rotated past the horizon, which the depth buffer used to do.
+   */
+  private updateLabelAnchors(): void {
+    if (!this.globe || !this.prayerLinesGroup) return;
+    const cam = this.globe.camera() as THREE.PerspectiveCamera;
+    cam.updateMatrixWorld();
+    // A point on a sphere of radius R is over the horizon when the cosine of
+    // its angle from the camera direction exceeds R / camera distance.
+    const camDist = cam.position.length();
+    const horizonCos = camDist > GLOBE_RADIUS ? GLOBE_RADIUS / camDist : 0;
+    const clamp = (n: number) => Math.max(-1, Math.min(1, n));
+    for (const obj of this.prayerLinesGroup.children) {
+      if (!(obj instanceof THREE.Sprite)) continue;
+      obj.getWorldPosition(this.labelWorld);
+      const facing = this.labelWorld.dot(cam.position) / (this.labelWorld.length() * camDist);
+      if (!facing || facing <= horizonCos) {
+        obj.visible = false;
+        continue;
+      }
+      this.labelNdc.copy(this.labelWorld).project(cam);
+      // Anchor itself off-screen: growing inward cannot rescue it, and half a
+      // word is worse than none. The line it marks is barely in frame anyway.
+      obj.visible = Math.abs(this.labelNdc.x) <= 1 && Math.abs(this.labelNdc.y) <= 1;
+      if (!obj.visible) continue;
+      obj.center.set(0.5 + 0.5 * clamp(this.labelNdc.x), 0.5 + 0.5 * clamp(this.labelNdc.y));
+    }
   }
 
   private updatePin(): void {
@@ -1258,6 +1305,8 @@ export class HomeGlobe {
     const dist = Math.max(1, (altitude - PIN_ALTITUDE) * GLOBE_RADIUS);
     const worldSize = (PIN_SIZE_PX * 2 * Math.tan((cam.fov * D2R) / 2) * dist) / canvasH;
     this.pin.scale.setScalar(worldSize);
+    // This is the camera-changed hook, so it is also where labels re-anchor.
+    this.updateLabelAnchors();
   }
 
 
