@@ -29,10 +29,22 @@ function renderHud(over: Partial<React.ComponentProps<typeof GlobeHud>> = {}) {
 
 describe('User story: at a glance on the globe I see what is next and how long', () => {
   it('leads with the next prayer, its clock time and the countdown', () => {
-    renderHud();
+    const { container } = renderHud();
     expect(screen.getByText('Asr')).toBeInTheDocument();
-    expect(screen.getByText('4:29 PM')).toBeInTheDocument();
     expect(screen.getByText('1:16:03')).toBeInTheDocument();
+    // The clock time is split so the meridiem can be set smaller than the hour.
+    expect(container.textContent).toContain('4:29');
+    expect(container.textContent).toContain('PM');
+  });
+
+  it('gives the hero slot to the prayer time, not the countdown', () => {
+    const { container } = renderHud();
+    const hero = container.querySelector('[style*="font-size: 40px"]') as HTMLElement;
+    expect(hero).toBeTruthy();
+    expect(hero.textContent).toContain('4:29');
+    expect(hero.textContent).not.toContain('1:16:03');
+    // The countdown runs quietly beside the prayer name instead.
+    expect(screen.getByText('1:16:03').className).toContain('text-base');
   });
 
   it('condenses the current prayer and its sunnah into one context line', () => {
@@ -49,7 +61,7 @@ describe('User story: at a glance on the globe I see what is next and how long',
 
   it('leaves the countdown calm with more than 20 minutes to go', () => {
     renderHud({ hours: 0, minutes: 25, seconds: 0 });
-    expect(screen.getByText('0:25:00')).toHaveStyle({ color: 'rgba(245,246,248,0.96)' });
+    expect(screen.getByText('0:25:00')).toHaveStyle({ color: 'rgba(245,246,248,0.55)' });
   });
 
   it('warms the countdown inside the last 20 minutes', () => {

@@ -22,7 +22,7 @@ const URGENT = '#ff8a75';
 const SHADOW = '0 2px 20px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9)';
 /**
  * The countdown warms up only inside the last 20 minutes. The list view's rule
- * (60% through the prayer window) suits a card border but not a 40px number —
+ * (60% through the prayer window) suits a card border but not a live clock —
  * it turned the digits red with well over an hour still to go.
  */
 const URGENT_WITHIN_MIN = 20;
@@ -30,12 +30,25 @@ const URGENT_WITHIN_MIN = 20;
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const pad = (n: number) => n.toString().padStart(2, '0');
 
+const CLOCK_FONT = '"JetBrains Mono", ui-monospace, monospace';
+
+/**
+ * "6:05 AM" → ["6:05", "AM"]. formatTime always renders hour12, so the suffix
+ * is reliably there; the fallback covers its "—" for prayers that never occur
+ * at extreme latitudes.
+ */
+function splitMeridiem(text: string): [string, string | null] {
+  const m = text.match(/^(.*?)\s*([AP]M)$/i);
+  return m ? [m[1], m[2]] : [text, null];
+}
+
 /**
  * The prayer HUD for the home globe: what is next, how long, and one quiet
  * line of context. Deliberately three lines rather than the list view's three
  * cards — every row here is drawn over a live earth, so the globe keeps the
- * space and the countdown carries the weight. The accent rule takes the
- * prayer's own colour from the solar lines on the globe.
+ * space and the prayer's own time carries the weight, with the countdown
+ * running quietly beside the name. The accent rule takes the prayer's own
+ * colour from the solar lines on the globe.
  */
 export function GlobeHud({
   currentPrayer, currentPrayerTime, nextPrayer, nextPrayerTime,
@@ -93,20 +106,35 @@ export function GlobeHud({
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-medium" style={{ color: INK, textShadow: SHADOW }}>{heroName}</span>
-              {heroTime && (
-                <span className="text-base" style={{ color: MUTED, textShadow: SHADOW }}>{formatTime(heroTime)}</span>
+              {showNext && (
+                <span
+                  className="text-base tabular-nums"
+                  style={{ fontFamily: CLOCK_FONT, color: isUrgent ? URGENT : MUTED, textShadow: SHADOW }}
+                >
+                  {hours}:{pad(minutes)}:{pad(seconds)}
+                </span>
               )}
             </div>
-            {showNext && (
+            {heroTime && (
               <div
                 className="tabular-nums leading-none mt-1"
                 style={{
-                  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                  fontFamily: CLOCK_FONT,
                   fontSize: 40, fontWeight: 600, letterSpacing: '-0.02em',
-                  color: isUrgent ? URGENT : INK, textShadow: SHADOW,
+                  color: INK, textShadow: SHADOW,
                 }}
               >
-                {hours}:{pad(minutes)}:{pad(seconds)}
+                {(() => {
+                  const [clock, meridiem] = splitMeridiem(formatTime(heroTime));
+                  return (
+                    <>
+                      {clock}
+                      {meridiem && (
+                        <span style={{ fontSize: 18, fontWeight: 500, marginLeft: 6, color: MUTED }}>{meridiem}</span>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

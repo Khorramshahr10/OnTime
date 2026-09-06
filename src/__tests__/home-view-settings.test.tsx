@@ -28,8 +28,18 @@ describe('Settings: homeView', () => {
     vi.clearAllMocks();
   });
 
-  it('defaults to "list" on first launch (no saved data)', async () => {
+  it('defaults to "globe" on first launch (no saved data)', async () => {
     vi.mocked(Preferences.get).mockResolvedValue({ value: null });
+
+    await act(async () => {
+      renderInspector();
+    });
+
+    expect(settingsRef.current!.homeView).toBe('globe');
+  });
+
+  it('keeps "list" for someone who chose it, rather than pulling them to the default', async () => {
+    vi.mocked(Preferences.get).mockResolvedValue({ value: JSON.stringify({ homeView: 'list' }) });
 
     await act(async () => {
       renderInspector();
@@ -57,7 +67,7 @@ describe('Settings: homeView', () => {
       renderInspector();
     });
 
-    expect(settingsRef.current!.homeView).toBe('list');
+    expect(settingsRef.current!.homeView).toBe('globe');
   });
 
   it('updateHomeView persists the new value', async () => {

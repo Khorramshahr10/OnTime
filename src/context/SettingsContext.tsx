@@ -79,7 +79,7 @@ const defaultSettings: Settings = {
   previousLocations: [],
   distanceUnit: 'miles',
   designStyle: 'classic',
-  homeView: 'list',
+  homeView: 'globe',
 };
 
 interface SettingsContextType {
@@ -186,7 +186,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           previousLocations: parsed.previousLocations || [],
           distanceUnit: parsed.distanceUnit || 'miles',
           designStyle: parsed.designStyle || 'classic',
-          homeView: parsed.homeView === 'globe' ? 'globe' : 'list',
+          // Only an explicit 'list' keeps the list: the globe is the default, so
+          // a missing or unrecognised value falls to it. Reading it this way
+          // round is what makes the choice sticky — a user who picked the list
+          // keeps the list, while everyone who never chose gets the globe.
+          homeView: parsed.homeView === 'list' ? 'list' : 'globe',
         });
       }
     } catch (error) {
