@@ -8,23 +8,10 @@ import { glowSprite } from './base3d';
 import {
   subSolarPoint,
   subLunarPoint,
-  angularSeparation,
   MECCA,
   D2R,
   type Vec3,
 } from '../../services/solarGeometry';
-import {
-  enumerateTiles,
-  cloudTileUrl,
-  tileKey,
-  tileXToLon,
-  tileYToLat,
-  mercatorNorm,
-  lonToTileX,
-  type TileRef,
-  type LatLonWindow,
-} from '../../services/earthTiles';
-import { getCloudImagery, extractCloudAlpha } from '../../services/cloudImagery';
 import { PRAYER_COLORS, PRAYER_ACCENTS } from '../../utils/prayerColors';
 
 export interface HomeGlobeData {
@@ -110,8 +97,6 @@ const TWILIGHT_ANGLE_DEG = 108; // fajr / isha (sun 18° below the horizon)
 const ASR_ANGLE_DEG = 45; // asr, standard method (sun ~45° altitude)
 /** Latitude offset that keeps neighbouring labels apart at the limb. */
 const LABEL_STAGGER_DEG = 18;
-/** Line + label colours, ordered dawn → night (chosen to contrast with the
- *  bright earth imagery as well as the dark space backdrop). */
 // Solar lines are drawn as fat lines (Line2): WebGL ignores LineBasicMaterial's
 // linewidth, so a plain THREE.Line is always one device pixel — a third of a
 // CSS pixel on a 3x phone, which is what made these read as hairlines. Widths
@@ -131,15 +116,7 @@ const NOON_COLOR = PRAYER_COLORS.dhuhr;
 const ASR_COLOR = PRAYER_COLORS.asr;
 
 const NIGHT_SHADE_ALTITUDE = 0.005;
-const GIBS_CLOUD_ALTITUDE = 0.012;
 
-/** OpenWeatherMap free API key, injected from VITE_OPENWEATHER_API_KEY at build
- *  time (see .env.example). Empty = live clouds disabled (daily NASA GIBS
- *  cloud mask used instead). Get one at openweathermap.org/api. */
-const OPENWEATHER_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY ?? '';
-const OWM_CLOUD_ALTITUDE = 0.016;
-const OWM_CLOUD_TILE_Z = 3;
-const OWM_CLOUD_REFETCH_MS = 60 * 60 * 1000;
 
 const v3 = (p: Vec3 | { x: number; y: number; z: number }) =>
   new THREE.Vector3(p.x, p.y, p.z);
@@ -320,37 +297,6 @@ const MOON_FRAGMENT_SHADER = `
   }
 `;
 
-/** Static GIBS cloud shell: dimmed on the night side. */
-const CLOUD_FRAGMENT_SHADER = `
-  uniform sampler2D cloudMap;
-  uniform vec3 sunDirection;
-  uniform float opacity;
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  void main() {
-    vec4 cloud = texture2D(cloudMap, vUv);
-    float ndotl = dot(normalize(vNormal), normalize(sunDirection));
-    float daylight = smoothstep(-0.1, 0.25, ndotl);
-    gl_FragColor = vec4(vec3(mix(0.22, 1.0, daylight)), cloud.a * opacity);
-  }
-`;
-
-/** OpenWeatherMap live cloud tiles: white where cloudy, transparent where clear.
- *  OWM encodes coverage in the alpha channel on a 0–127 scale, hence the ×2. */
-const CLOUD_TILE_FRAGMENT_SHADER = `
-  uniform sampler2D cloudMap;
-  uniform vec3 sunDirection;
-  uniform float opacity;
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  void main() {
-    vec4 cloud = texture2D(cloudMap, vUv);
-    float ndotl = dot(normalize(vNormal), normalize(sunDirection));
-    float daylight = smoothstep(-0.1, 0.25, ndotl);
-    gl_FragColor = vec4(vec3(mix(0.22, 1.0, daylight)), cloud.a * 2.0 * opacity);
-  }
-`;
-
 const SURFACE_VERTEX_SHADER = `
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -361,54 +307,11 @@ const SURFACE_VERTEX_SHADER = `
   }
 `;
 
-/** Geometry for one live-cloud tile (Web Mercator on the globe at `radius`). */
-function buildCloudTileGeometry(tile: TileRef, radius: number): THREE.BufferGeometry {
-  const west = tileXToLon(tile.x, tile.z);
-  let east = tileXToLon(tile.x + 1, tile.z);
-  if (east <= west) east += 360;
-  const north = tileYToLat(tile.y, tile.z);
-  const south = tileYToLat(tile.y + 1, tile.z);
-
-  const SEG = 8;
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const uvs: number[] = [];
-  const indices: number[] = [];
-  for (let j = 0; j <= SEG; j++) {
-    const lat = north + ((south - north) * j) / SEG;
-    // v=1 at the tile's north edge — matches globe.gl's own tile-engine UVs
-    // (SphereGeometry + convertMercatorUV), so cloud rows tile seamlessly.
-    const v = tile.y + 1 - mercatorNorm(lat) * 2 ** tile.z;
-    for (let i = 0; i <= SEG; i++) {
-      const lon = west + ((east - west) * i) / SEG;
-      const p = geo2xyz(lat, lon, radius);
-      positions.push(p.x, p.y, p.z);
-      normals.push(p.x / radius, p.y / radius, p.z / radius);
-      uvs.push(lonToTileX(lon, tile.z) - tile.x, v);
-    }
-  }
-  for (let j = 0; j < SEG; j++) {
-    for (let i = 0; i < SEG; i++) {
-      const a = j * (SEG + 1) + i;
-      const b = a + 1;
-      const c = a + (SEG + 1);
-      const d = c + 1;
-      indices.push(a, c, b, b, c, d);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
-  return geometry;
-}
-
 /**
  * Full-page ambient globe for the Home screen, built on globe.gl's tile
  * engine (Esri World Imagery). Layered on top of the globe: a real day/night
  * terminator, the sun and moon positioned from actual ephemeris, a location
- * pin, and live cloud cover. The camera always aims at the user's
+ * and pin. The camera always aims at the user's
  * coordinates, with "My location" flying closer.
  */
 export class HomeGlobe {
@@ -462,18 +365,7 @@ export class HomeGlobe {
   private smoothHeading = -1;
   private groundFlyAnim: { start: number; from: THREE.Vector3; to: THREE.Vector3 } | null = null;
 
-  // GIBS cloud shell (fallback / no-key)
-  private gibsClouds!: THREE.Mesh;
-  private gibsCloudMaterial!: THREE.ShaderMaterial;
-  private baseCloudOpacity = 0;
 
-  // OpenWeatherMap live cloud patches
-  private cloudGroup!: THREE.Group;
-  private cloudPatches = new Map<string, THREE.Mesh>();
-  private cloudTextures = new Map<string, THREE.Texture>();
-  private cloudLoading = new Set<string>();
-  private lastCloudFetch = 0;
-  private lastCloudPov = { lat: -999, lng: -999 };
 
   private ro?: ResizeObserver;
   private io?: IntersectionObserver;
@@ -504,8 +396,8 @@ export class HomeGlobe {
       // any level > 0, and only adds a tile once its image has downloaded — so
       // without a base texture every un-loaded tile reads as a black hole while
       // the mosaic streams in. Bundled (and preloaded from index.html) so it is
-      // decoded before the globe mounts and still works offline; the GIBS
-      // photo upgrades it on arrival. The tile engine itself is switched on in
+      // decoded before the globe mounts and still works offline. The tile
+      // engine itself is switched on in
       // enableTilesOnceBaseIsUp(): started together, the tile flood (hundreds
       // of decodes + GPU uploads) lands ahead of the base and the globe sits
       // black for the first half second of every cold start.
@@ -540,8 +432,8 @@ export class HomeGlobe {
       this.prepareBaseMaterial();
       this.enableTilesOnceBaseIsUp();
       this.buildExtras();
-      // Aim the camera first, so the cloud layer fetches the tiles around
-      // the user's location rather than the globe's default (0,0) point.
+      // Aim the camera before the first paint so the surface tiles load
+      // around the user rather than the globe's default (0,0) point.
       this.globe.pointOfView({ lat: this.data.latitude, lng: this.data.longitude, altitude: HOME_ALTITUDE }, 0);
       this.applyKey = this.computeApplyKey(this.data);
       this.applyData();
@@ -555,7 +447,6 @@ export class HomeGlobe {
 
     this.globe.onZoom(() => {
       this.updateZoomFades();
-      this.refreshCloudsOnRotation();
     });
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -594,7 +485,6 @@ export class HomeGlobe {
       this.renderThenSettle();
     };
     this.syncLoop();
-    this.fetchGibsImagery();
 
     // Tap (not drag) detection for tap-to-zoom on the moon.
     const canvas = this.globe.renderer().domElement;
@@ -656,7 +546,7 @@ export class HomeGlobe {
   private tilesEnabled = false;
 
   /**
-   * The base sphere (bundled earth, later the GIBS photo) stays visible under
+   * The base sphere (the bundled earth photo) stays visible under
    * the tile mosaic (three-globe patch), so it must lose the depth test
    * wherever a tile exists. Tiles sit at exactly the same radius, and a
    * polygon offset alone still sparkled at this camera distance (24-bit depth
@@ -1048,16 +938,6 @@ export class HomeGlobe {
     this.ro?.disconnect();
     this.io?.disconnect();
     this.globe?.pauseAnimation();
-    this.cloudLoading.clear();
-    for (const mesh of this.cloudPatches.values()) {
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-    }
-    this.cloudPatches.clear();
-    for (const tex of this.cloudTextures.values()) tex.dispose();
-    this.cloudTextures.clear();
-    const gibsMap = this.gibsCloudMaterial?.uniforms.cloudMap.value as THREE.Texture | undefined;
-    if (gibsMap && gibsMap !== this.placeholderTexture) gibsMap.dispose();
     if (this.prayerLinesGroup) {
       for (const obj of [...this.prayerLinesGroup.children]) {
         this.prayerLinesGroup.remove(obj);
@@ -1101,10 +981,6 @@ export class HomeGlobe {
     if (this.pin) {
       (this.pin.material as THREE.SpriteMaterial).map?.dispose();
       this.pin.material.dispose();
-    }
-    if (this.gibsClouds) {
-      this.gibsClouds.geometry.dispose();
-      this.gibsCloudMaterial.dispose();
     }
     this.placeholderTexture?.dispose();
     try {
@@ -1245,31 +1121,6 @@ export class HomeGlobe {
     this.pin.renderOrder = 3;
     scene.add(this.pin);
 
-    // GIBS cloud shell
-    this.gibsCloudMaterial = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.FrontSide,
-      uniforms: {
-        cloudMap: { value: this.emptyTexture() },
-        sunDirection: { value: new THREE.Vector3(0, 0, 1) },
-        opacity: { value: 0 },
-      },
-      vertexShader: SURFACE_VERTEX_SHADER,
-      fragmentShader: CLOUD_FRAGMENT_SHADER,
-    });
-    this.gibsClouds = new THREE.Mesh(
-      new THREE.SphereGeometry(GLOBE_RADIUS * (1 + GIBS_CLOUD_ALTITUDE), 96, 64),
-      this.gibsCloudMaterial
-    );
-    this.gibsClouds.renderOrder = 2;
-    scene.add(this.gibsClouds);
-
-    // OpenWeatherMap live cloud patches
-    this.cloudGroup = new THREE.Group();
-    this.cloudGroup.renderOrder = 2;
-    scene.add(this.cloudGroup);
-
     // Sun-position lines (terminator + noon meridian) with salah labels
     this.prayerLinesGroup = new THREE.Group();
     this.prayerLinesGroup.renderOrder = 3;
@@ -1294,11 +1145,7 @@ export class HomeGlobe {
     const sunDir = v3(this.globe.getCoords(sunLat, sunLon, 1)).normalize();
 
     this.nightMaterial.uniforms.sunDirection.value.copy(sunDir);
-    this.gibsCloudMaterial.uniforms.sunDirection.value.copy(sunDir);
     this.worldSunDir.copy(sunDir);
-    for (const mesh of this.cloudPatches.values()) {
-      (mesh.material as THREE.ShaderMaterial).uniforms.sunDirection.value.copy(sunDir);
-    }
 
     const sunPos = this.globe.getCoords(sunLat, sunLon, SUN_ALTITUDE);
     this.sun.position.copy(v3(sunPos));
@@ -1309,8 +1156,6 @@ export class HomeGlobe {
     this.applyMoonRotation();
 
     this.rebuildPrayerLines(sunLat, sunLon);
-
-    if (OPENWEATHER_API_KEY) this.maybeRefreshClouds();
   }
 
   /**
@@ -1407,13 +1252,6 @@ export class HomeGlobe {
     // manually) and the pin/labels are hidden anyway — skip the fade logic.
     if (this.inGroundMode) return;
     const altitude = this.globe?.pointOfView().altitude ?? HOME_ALTITUDE;
-    const fade = Math.max(0, Math.min(1, (altitude - 0.35) / 0.85));
-    if (this.gibsCloudMaterial) this.gibsCloudMaterial.uniforms.opacity.value = this.baseCloudOpacity * fade;
-    // Skip the GIBS shell entirely when the live layer is doing the clouds.
-    if (this.gibsClouds) this.gibsClouds.visible = this.baseCloudOpacity > 0;
-    for (const mesh of this.cloudPatches.values()) {
-      (mesh.material as THREE.ShaderMaterial).uniforms.opacity.value = fade;
-    }
     // Keep the marker a constant size on screen at every zoom level.
     const cam = this.globe.camera() as THREE.PerspectiveCamera;
     const canvasH = (this.host.clientHeight || 1) * Math.min(window.devicePixelRatio || 1, 2);
@@ -1422,137 +1260,6 @@ export class HomeGlobe {
     this.pin.scale.setScalar(worldSize);
   }
 
-  /** Fetch the daily NASA GIBS imagery for the fallback cloud mask. */
-  private fetchGibsImagery(): void {
-    getCloudImagery(this.data.now)
-      .then((result) => {
-        if (this.disposed || result.source === 'procedural' || !result.base64Jpeg) return;
-        // Web Mercator tiles stop at ±85° latitude, so the polar caps have no
-        // surface tiles and would otherwise render as a black "hole". Use the
-        // same-day full-globe photo as the base sphere so the poles (and any
-        // brief tile-loading gaps) show real imagery. prepareBaseMaterial()
-        // keeps the tiles winning the depth test on top of it.
-        const dataUrl = `data:image/jpeg;base64,${result.base64Jpeg}`;
-        this.globe.globeImageUrl(dataUrl);
-        this.prepareBaseMaterial();
-
-        const img = new Image();
-        img.onload = () => {
-          if (this.disposed) return;
-          const canvas = extractCloudAlpha(img);
-          const tex = new THREE.CanvasTexture(canvas);
-          const prev = this.gibsCloudMaterial.uniforms.cloudMap.value as THREE.Texture;
-          if (prev && prev !== this.placeholderTexture) prev.dispose();
-          this.gibsCloudMaterial.uniforms.cloudMap.value = tex;
-          this.baseCloudOpacity = OPENWEATHER_API_KEY ? 0 : 1;
-          this.gibsCloudMaterial.needsUpdate = true;
-          this.updateZoomFades();
-          this.renderThenSettle();
-        };
-        img.src = dataUrl;
-      })
-      .catch(() => {});
-  }
-
-  // ── live clouds (OpenWeatherMap) ─────────────────────────────────────
-
-  private maybeRefreshClouds(): void {
-    const now = performance.now();
-    if (now - this.lastCloudFetch < OWM_CLOUD_REFETCH_MS) return;
-    this.lastCloudFetch = now;
-    for (const tex of this.cloudTextures.values()) tex.dispose();
-    this.cloudTextures.clear();
-    for (const [, mesh] of this.cloudPatches) {
-      this.cloudGroup.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.ShaderMaterial).dispose();
-    }
-    this.cloudPatches.clear();
-    this.lastCloudPov = { lat: -999, lng: -999 };
-    this.refreshClouds();
-  }
-
-  /** Cover the newly-visible region after a spin, reusing cached tiles. */
-  private refreshCloudsOnRotation(): void {
-    if (!OPENWEATHER_API_KEY || !this.ready) return;
-    const pov = this.globe.pointOfView();
-    const dLat = Math.abs(pov.lat - this.lastCloudPov.lat);
-    const dLng = Math.abs((((pov.lng - this.lastCloudPov.lng + 540) % 360) + 360) % 360 - 180);
-    if (Math.max(dLat, dLng) < 12) return;
-    this.lastCloudPov = { lat: pov.lat, lng: pov.lng };
-    this.refreshClouds();
-  }
-
-  private refreshClouds(): void {
-    if (!OPENWEATHER_API_KEY || !this.ready) return;
-    const pov = this.globe.pointOfView();
-    const window: LatLonWindow = { latitude: pov.lat, longitude: pov.lng, latHalf: 88, lonHalf: 88 };
-    const tiles = enumerateTiles(window, OWM_CLOUD_TILE_Z);
-
-    const desired = new Set<string>();
-    for (const tile of tiles) {
-      const key = tileKey(tile);
-      const lat = tileYToLat(tile.y + 0.5, tile.z);
-      const lng = tileXToLon(tile.x + 0.5, tile.z);
-      if (angularSeparation({ latitude: pov.lat, longitude: pov.lng }, { latitude: lat, longitude: lng }) > 92) continue;
-      desired.add(key);
-      if (this.cloudPatches.has(key) || this.cloudLoading.has(key)) continue;
-      this.createCloudPatch(tile);
-    }
-    for (const [key, mesh] of this.cloudPatches) {
-      if (!desired.has(key)) {
-        this.cloudPatches.delete(key);
-        this.cloudGroup.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.ShaderMaterial).dispose();
-      }
-    }
-  }
-
-  private createCloudPatch(tile: TileRef): void {
-    const ssp = subSolarPoint(this.data.now);
-    const sunDir = v3(this.globe.getCoords(ssp.latitude, ssp.longitude, 1)).normalize();
-    const material = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.FrontSide,
-      uniforms: {
-        cloudMap: { value: this.emptyTexture() },
-        sunDirection: { value: sunDir },
-        opacity: { value: 0 },
-      },
-      vertexShader: SURFACE_VERTEX_SHADER,
-      fragmentShader: CLOUD_TILE_FRAGMENT_SHADER,
-    });
-    const mesh = new THREE.Mesh(buildCloudTileGeometry(tile, GLOBE_RADIUS * (1 + OWM_CLOUD_ALTITUDE)), material);
-    this.cloudGroup.add(mesh);
-    this.cloudPatches.set(tileKey(tile), mesh);
-    this.loadCloudImage(tile, mesh);
-  }
-
-  private loadCloudImage(tile: TileRef, mesh: THREE.Mesh): void {
-    const key = tileKey(tile);
-    this.cloudLoading.add(key);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      this.cloudLoading.delete(key);
-      if (this.disposed) return;
-      const tex = new THREE.Texture(img);
-      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-      tex.generateMipmaps = false;
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.needsUpdate = true;
-      this.cloudTextures.set(key, tex);
-      (mesh.material as THREE.ShaderMaterial).uniforms.cloudMap.value = tex;
-      (mesh.material as THREE.ShaderMaterial).needsUpdate = true;
-      this.updateZoomFades();
-      this.renderThenSettle();
-    };
-    img.onerror = () => this.cloudLoading.delete(key);
-    img.src = cloudTileUrl(tile, OPENWEATHER_API_KEY);
-  }
 
   private placeholderTexture?: THREE.DataTexture;
 

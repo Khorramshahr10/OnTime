@@ -7,7 +7,7 @@ import { TravelProvider } from './context/TravelContext';
 import App from './App';
 import './index.css';
 
-// Cache the globe's satellite/cloud tiles on disk (download once, then local).
+// Cache the globe's satellite tiles on disk (download once, then local).
 // Optional: if the WebView lacks service-worker support, tiles just load from
 // the network exactly as before.
 if ('serviceWorker' in navigator) {

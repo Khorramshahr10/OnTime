@@ -42,7 +42,7 @@ const CONTROL_ACTIVE_STYLE: CSSProperties = {
 
 /**
  * Full-page ambient background for the Home Globe view: starfield, earth,
- * day/night terminator, live clouds. Purely visual — the header and
+ * day/night terminator, solar prayer lines. Purely visual — the header and
  * countdown HUD render on top of this as siblings in App.tsx, not inside it.
  */
 export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerTime[]; covered?: boolean }) {
@@ -130,10 +130,10 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
       className="absolute inset-0 z-0"
       style={{ background: SPACE_BACKDROP, visibility: covered ? 'hidden' : 'visible' }}
     >
-      {/* One scrim for the whole top HUD (header + prayer info). The globe's
-          cloud tops are near-white, so light text over them survived on drop
-          shadows alone; this darkens the sky it sits on and fades out before
-          the earth's middle. */}
+      {/* One scrim for the whole top HUD (header + prayer info). Snow, ice and
+          desert in the satellite imagery are near-white, so light text over them
+          survived on drop shadows alone; this darkens the sky it sits on and
+          fades out before the earth's middle. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 z-[1]"
@@ -210,12 +210,12 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
         </div>
       )}
 
-      {/* Required attribution for the Esri + OpenWeatherMap tile layers. */}
+      {/* Required attribution for the Esri imagery. */}
       <div
         className="absolute inset-x-0 bottom-1 px-3 z-0 text-[9px] leading-tight text-white/30 pointer-events-none select-none truncate"
         aria-hidden="true"
       >
-        Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community · Clouds © OpenWeatherMap
+        Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community · NASA Blue Marble
       </div>
     </div>
   );
