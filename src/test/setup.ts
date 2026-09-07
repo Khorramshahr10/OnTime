@@ -42,6 +42,8 @@ vi.mock('@capacitor/app', () => ({
 vi.mock('@capacitor/local-notifications', () => ({
   LocalNotifications: {
     schedule: vi.fn().mockResolvedValue(undefined),
+    cancel: vi.fn().mockResolvedValue(undefined),
+    getPending: vi.fn().mockResolvedValue({ notifications: [] }),
     checkPermissions: vi.fn().mockResolvedValue({ display: 'granted' }),
     requestPermissions: vi.fn().mockResolvedValue({ display: 'granted' }),
     addListener: vi.fn().mockResolvedValue({ remove: vi.fn() }),
@@ -76,9 +78,19 @@ vi.mock('@capacitor/filesystem', () => ({
   Encoding: { UTF8: 'utf8' },
 }));
 
-// Mock prayer tracking service (uses Filesystem internally)
-vi.mock('../services/prayerTrackingService', () => ({
-  trackPrayer: vi.fn().mockResolvedValue(undefined),
-  getPrayerStatus: vi.fn().mockResolvedValue('untracked'),
-  getTodayLog: vi.fn().mockResolvedValue(null),
-}));
+// Mock prayer tracking service. The pure day-key helpers stay real — stubbing
+// getTodayKey would silently make any assertion about "Today" meaningless —
+// while everything that reaches Preferences is stubbed out.
+vi.mock('../services/prayerTrackingService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/prayerTrackingService')>();
+  return {
+    getTodayKey: actual.getTodayKey,
+    getDateKey: actual.getDateKey,
+    loadTrackingData: vi.fn().mockResolvedValue({ records: [] }),
+    trackPrayer: vi.fn().mockResolvedValue(undefined),
+    getPrayerStatus: vi.fn().mockResolvedValue('untracked'),
+    getDailyRecord: vi.fn().mockResolvedValue({ date: actual.getTodayKey(), prayers: {} }),
+    getRecentRecords: vi.fn().mockResolvedValue([]),
+    getStats: vi.fn().mockResolvedValue({ totalTracked: 0, onTime: 0, missed: 0, percentage: 0 }),
+  };
+});

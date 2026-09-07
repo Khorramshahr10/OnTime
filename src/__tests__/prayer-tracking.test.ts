@@ -9,7 +9,12 @@ import {
   getRecentRecords,
   getStats,
   getTodayKey,
+  getDateKey,
+  loadTrackingData,
 } from '../services/prayerTrackingService';
+
+// Not exported by the service; the literal key its blob lives under.
+const TRACKING_KEY = 'ontime_prayer_tracking';
 
 describe('User story: I can track whether I prayed on time', () => {
   let storage: Record<string, string> = {};
@@ -99,5 +104,71 @@ describe('User story: I can track whether I prayed on time', () => {
     expect(records.length).toBe(3);
     expect(records[0].prayers.fajr).toBe('ontime');
     expect(Object.keys(records[1].prayers).length).toBe(0);
+  });
+
+  it('counts the same window it displays (ST-2)', async () => {
+    // A missed prayer exactly 7 days back sits outside a 7-day window that
+    // starts 6 days back. getStats used to subtract `days` and compare
+    // inclusively, so it counted an eighth day that no card showed and reported
+    // 50% for a week the user can see is perfect.
+    const sevenDaysBack = new Date();
+    sevenDaysBack.setDate(sevenDaysBack.getDate() - 7);
+
+    await trackPrayer('fajr', 'missed', sevenDaysBack);
+    await trackPrayer('dhuhr', 'ontime');
+
+    const cards = await getRecentRecords(7);
+    const stats = await getStats(7);
+
+    expect(cards).toHaveLength(7);
+    expect(cards.some((c) => c.date === getDateKey(sevenDaysBack))).toBe(false);
+    expect(stats.totalTracked).toBe(1);
+    expect(stats.onTime).toBe(1);
+    expect(stats.percentage).toBe(100);
+  });
+
+  it('repairs a legacy day key exactly once, then leaves it alone (ST-5)', async () => {
+    // A blob from before the schema marker existed, whose day key disagrees
+    // with its own trackedAt — the shape the old UTC keying produced.
+    const isha = new Date();
+    isha.setHours(12, 0, 0, 0);
+    const legacyKey = getDateKey(new Date(isha.getTime() - 86_400_000));
+    storage[TRACKING_KEY] = JSON.stringify({
+      records: [{ date: legacyKey, prayer: 'isha', status: 'ontime', trackedAt: isha.toISOString() }],
+    });
+
+    const first = await loadTrackingData();
+    expect(first.records[0].date).toBe(getDateKey(isha));
+    expect(JSON.parse(storage[TRACKING_KEY]).dayKeySchema).toBeTruthy();
+
+    // Now the device has changed timezone. Re-deriving trackedAt would file
+    // this prayer under a different day than it was actually prayed, so the
+    // marker has to short-circuit the repair and leave the record where it is.
+    const blob = JSON.parse(storage[TRACKING_KEY]);
+    blob.records[0].date = legacyKey;
+    storage[TRACKING_KEY] = JSON.stringify(blob);
+
+    const second = await loadTrackingData();
+    expect(second.records[0].date).toBe(legacyKey);
+  });
+
+  it('collapses records that re-key onto the same day and prayer (ST-5)', async () => {
+    // Two records for one prayer, written a second apart, both keyed to a day
+    // that no longer matches. Re-keying lands them on the same date+prayer, so
+    // getStats would double-count the pair and getPrayerStatus's find would
+    // return whichever came first. The newest has to win.
+    const noon = new Date();
+    noon.setHours(12, 0, 0, 0);
+    storage[TRACKING_KEY] = JSON.stringify({
+      records: [
+        { date: 'stale', prayer: 'fajr', status: 'missed', trackedAt: new Date(noon.getTime() - 1000).toISOString() },
+        { date: 'stale', prayer: 'fajr', status: 'ontime', trackedAt: noon.toISOString() },
+      ],
+    });
+
+    const data = await loadTrackingData();
+    expect(data.records).toHaveLength(1);
+    expect(data.records[0].status).toBe('ontime');
+    expect(data.records[0].date).toBe(getDateKey(noon));
   });
 });

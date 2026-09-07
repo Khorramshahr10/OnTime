@@ -21,6 +21,22 @@ export interface TrackingData {
   records: PrayerRecord[];
 }
 
+/**
+ * Bumped whenever the meaning of a record's `date` changes, so a one-off repair
+ * can tell "already migrated" from "written by an older build". Blobs saved
+ * before it existed simply lack the field, which is exactly the set that needs
+ * migrating.
+ */
+const DAY_KEY_SCHEMA = 2;
+
+/** The persisted shape: the public data plus the migration marker. */
+interface StoredTrackingData extends TrackingData {
+  dayKeySchema?: number;
+}
+
+/** How many days of history to keep, today included. */
+const RETENTION_DAYS = 30;
+
 // Day keys use the LOCAL calendar date, not UTC (toISOString): east of UTC,
 // between local midnight and the UTC offset hour, the UTC date is still
 // yesterday, which would file last night's Isha under yesterday and show
@@ -41,23 +57,53 @@ export function getDateKey(date: Date): string {
   return localDateKey(date);
 }
 
+// The local day key for `daysBack` days before today. Day 0 is today, so a
+// window of N days spans N-1 back to 0 — getting that wrong is what made
+// getStats(7) count eight calendar days against the seven cards on screen.
+function dayKeyNDaysBack(daysBack: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysBack);
+  return localDateKey(date);
+}
+
 // Records written before the UTC→local day-key change carry a UTC-derived
 // `date`, which no longer matches the local key lookups use — east of UTC that
 // silently orphans every prayer tracked between local midnight and the offset
 // hour. `trackedAt` is the authoritative instant, so the right key is
-// recoverable; recomputing is a no-op for records already written locally.
-function withLocalDateKeys(data: TrackingData): TrackingData {
-  let changed = false;
-  const records = data.records.map((record) => {
+// recoverable.
+//
+// This has to run exactly once. Recomputing it on every load re-derived each
+// record's day in whatever timezone the device happens to be in *now*, so a user
+// who flew west found last night's checkmark filed under the previous day — and
+// this app ships Travel Mode, so crossing timezones is a designed journey.
+function migrateDayKeys(data: StoredTrackingData): TrackingData {
+  const { records } = data;
+  if (data.dayKeySchema === DAY_KEY_SCHEMA) return { records };
+
+  const rekeyed = records.map((record) => {
     const trackedAt = new Date(record.trackedAt);
     if (Number.isNaN(trackedAt.getTime())) return record;
     const localKey = localDateKey(trackedAt);
-    if (localKey === record.date) return record;
-    changed = true;
-    return { ...record, date: localKey };
+    return localKey === record.date ? record : { ...record, date: localKey };
   });
-  if (changed) saveTrackingData({ records });
-  return { records };
+
+  // Re-keying can collapse two records onto the same day and prayer. Keep the
+  // most recently tracked, or getStats double-counts the pair while
+  // getPrayerStatus's `find` returns whichever was written first.
+  const newest = new Map<string, PrayerRecord>();
+  for (const record of rekeyed) {
+    const key = `${record.date}|${record.prayer}`;
+    const existing = newest.get(key);
+    if (!existing || Date.parse(record.trackedAt) > Date.parse(existing.trackedAt)) {
+      newest.set(key, record);
+    }
+  }
+  const migrated = [...newest.values()];
+
+  // Saved whether or not anything changed, so the marker lands and the repair
+  // never runs again.
+  void saveTrackingData({ records: migrated });
+  return { records: migrated };
 }
 
 // Load all tracking data
@@ -65,7 +111,7 @@ export async function loadTrackingData(): Promise<TrackingData> {
   try {
     const { value } = await Preferences.get({ key: TRACKING_KEY });
     if (value) {
-      return withLocalDateKeys(JSON.parse(value) as TrackingData);
+      return migrateDayKeys(JSON.parse(value) as StoredTrackingData);
     }
   } catch (error) {
     console.error('Failed to load tracking data:', error);
@@ -76,9 +122,12 @@ export async function loadTrackingData(): Promise<TrackingData> {
 // Save tracking data
 async function saveTrackingData(data: TrackingData): Promise<void> {
   try {
+    // Every write stamps the current schema, so a save can't drop the marker
+    // and send the next load back through the migration.
+    const stored: StoredTrackingData = { records: data.records, dayKeySchema: DAY_KEY_SCHEMA };
     await Preferences.set({
       key: TRACKING_KEY,
-      value: JSON.stringify(data),
+      value: JSON.stringify(stored),
     });
   } catch (error) {
     console.error('Failed to save tracking data:', error);
@@ -109,10 +158,8 @@ export async function trackPrayer(
     });
   }
   
-  // Keep only last 30 days of records to save space
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const cutoffDate = getDateKey(thirtyDaysAgo);
+  // Keep the last RETENTION_DAYS days of records, today included.
+  const cutoffDate = dayKeyNDaysBack(RETENTION_DAYS - 1);
   data.records = data.records.filter((r) => r.date >= cutoffDate);
   
   await saveTrackingData(data);
@@ -154,9 +201,7 @@ export async function getRecentRecords(days: number = 7): Promise<DailyRecord[]>
   const results: DailyRecord[] = [];
   
   for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateKey = getDateKey(date);
+    const dateKey = dayKeyNDaysBack(i);
     
     const dayRecords = data.records.filter((r) => r.date === dateKey);
     const prayers: Partial<Record<PrayerName, PrayerStatus>> = {};
@@ -181,10 +226,12 @@ export interface PrayerStats {
 export async function getStats(days: number = 7): Promise<PrayerStats> {
   const data = await loadTrackingData();
   
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - days);
-  const cutoffKey = getDateKey(cutoffDate);
-  
+  // Exactly the window getRecentRecords(days) displays: today plus the days-1
+  // before it. Counting one day further back than the cards on screen is how
+  // the weekly score came to disagree with them — an eighth, invisible day
+  // could pull a 100% week down to 50%.
+  const cutoffKey = dayKeyNDaysBack(days - 1);
+
   const recentRecords = data.records.filter((r) => r.date >= cutoffKey);
   
   const onTime = recentRecords.filter((r) => r.status === 'ontime').length;

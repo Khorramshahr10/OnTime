@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { 
-  getRecentRecords, 
-  getStats, 
-  type DailyRecord, 
+import {
+  getRecentRecords,
+  getStats,
+  getTodayKey,
+  getDateKey,
+  type DailyRecord,
   type PrayerStats,
-  type PrayerStatus 
+  type PrayerStatus
 } from '../services/prayerTrackingService';
 import type { PrayerName } from '../types';
 
@@ -55,14 +57,18 @@ export function Dashboard({ isOpen, onClose }: DashboardProps) {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + 'T12:00:00');
-    const today = new Date();
-    const yesterday = new Date(today);
+    const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
 
-    if (dateStr === today.toISOString().split('T')[0]) {
+    // dateStr is a LOCAL day key from getRecentRecords(). Comparing it against
+    // toISOString() — a UTC key — shifted every label by a day for anyone not
+    // on UTC, during the hours between local midnight and the UTC offset. That
+    // is exactly the window Isha gets tracked in, so yesterday's card read
+    // "Today" every morning east of UTC.
+    if (dateStr === getTodayKey()) {
       return 'Today';
     }
-    if (dateStr === yesterday.toISOString().split('T')[0]) {
+    if (dateStr === getDateKey(yesterday)) {
       return 'Yesterday';
     }
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
