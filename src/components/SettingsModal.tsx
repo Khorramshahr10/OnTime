@@ -28,10 +28,14 @@ const PRAYER_LABELS: Record<PrayerName, string> = {
   isha: 'Isha',
 };
 
+// "(Built-in)" was dropped from the adhan labels: no audio ships in res/raw, so
+// the word promised a file that was never there. What these options actually do
+// is route the prayer to the athan chosen on the Athan Sounds page — see
+// resolveChannelId — which is still a real, distinct behaviour.
 const BUILT_IN_SOUND_OPTIONS: { value: NotificationSound; label: string }[] = [
   { value: 'default', label: 'Default' },
-  { value: 'adhan', label: 'Adhan (Built-in)' },
-  { value: 'adhan_fajr', label: 'Adhan Fajr (Built-in)' },
+  { value: 'adhan', label: 'Adhan' },
+  { value: 'adhan_fajr', label: 'Fajr Adhan' },
   { value: 'silent', label: 'Silent' },
 ];
 
@@ -86,6 +90,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [athanSelectError, setAthanSelectError] = useState<string | null>(null);
   const [useSeparateFajr, setUseSeparateFajr] = useState(
     settings.athan.selectedFajrAthanId !== null && settings.athan.selectedFajrAthanId !== settings.athan.selectedAthanId
   );
@@ -106,6 +111,32 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
       setPreviewingId(null);
     }
   }, [previewingId]);
+
+  // Selecting an athan builds a native notification channel, which can fail —
+  // a missing audio file, or external storage unmounted. The three call sites
+  // were bare async onClick handlers, so a rejection escaped unhandled and the
+  // row simply did nothing: no error, no state change, nothing to tell a slow
+  // tap apart from a broken one.
+  const handleSelectAthan = useCallback(
+    async (athan: AthanFile, slot: 'main' | 'fajr') => {
+      setAthanSelectError(null);
+      try {
+        const currentChannelId = slot === 'fajr'
+          ? settings.athan.currentFajrChannelId
+          : settings.athan.currentChannelId;
+        const channelId = await selectAthan(athan, currentChannelId, slot);
+        updateAthan(slot === 'fajr'
+          ? { selectedFajrAthanId: athan.id, currentFajrChannelId: channelId }
+          : { selectedAthanId: athan.id, currentChannelId: channelId });
+      } catch (err) {
+        console.error('Failed to select athan:', err);
+        setAthanSelectError(
+          err instanceof Error ? err.message : 'Could not switch to that athan.',
+        );
+      }
+    },
+    [settings.athan.currentChannelId, settings.athan.currentFajrChannelId, updateAthan],
+  );
 
   useEffect(() => {
     return () => { stopPreview(); };
@@ -1032,22 +1063,18 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm text-[var(--color-muted)] flex-shrink-0">Sound</span>
                           <select
-                            value={prayerSettings.sound}
+                            // A per-prayer downloaded athan could never be honoured: no channel is
+                            // created for one, so it silently played the main athan (or nothing)
+                            // instead. Those options are gone. A legacy stored value still resolves
+                            // to the main athan channel, which is what "Adhan" selects too, so show
+                            // that rather than rendering a blank dropdown.
+                            value={prayerSettings.sound.startsWith('athan:') ? 'adhan' : prayerSettings.sound}
                             onChange={(e) => updatePrayerNotification(prayer, { sound: e.target.value as NotificationSound })}
                             className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] max-w-[60%] truncate"
                           >
                             {BUILT_IN_SOUND_OPTIONS.map((opt) => (
                               <option key={opt.value} value={opt.value}>{opt.label}</option>
                             ))}
-                            {settings.athan.downloadedAthans.length > 0 && (
-                              <optgroup label="Downloaded Athans">
-                                {settings.athan.downloadedAthans.map((athan) => (
-                                  <option key={athan.id} value={`athan:${athan.id}`}>
-                                    {athan.muezzinName} — {athan.title}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
                           </select>
                         </div>
                       </div>
@@ -1063,6 +1090,12 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
         {category === 'notifications-athan' && (
           <div className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold text-[var(--color-text)]">Athan Sounds</h3>
+
+            {athanSelectError && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                <p className="text-red-500 text-sm">{athanSelectError}</p>
+              </div>
+            )}
 
             {/* Browse & Download */}
             <button
@@ -1115,10 +1148,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                   >
                     {/* Radio button */}
                     <div
-                      onClick={async () => {
-                        const channelId = await selectAthan(athan, settings.athan.currentChannelId, 'main');
-                        updateAthan({ selectedAthanId: athan.id, currentChannelId: channelId });
-                      }}
+                      onClick={() => { void handleSelectAthan(athan, 'main'); }}
                       className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 cursor-pointer ${
                         settings.athan.selectedAthanId === athan.id ? 'border-[var(--color-primary)]' : 'border-[var(--color-muted)]'
                       }`}
@@ -1131,10 +1161,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                     {/* Info */}
                     <div
                       className="flex-1 min-w-0 cursor-pointer"
-                      onClick={async () => {
-                        const channelId = await selectAthan(athan, settings.athan.currentChannelId, 'main');
-                        updateAthan({ selectedAthanId: athan.id, currentChannelId: channelId });
-                      }}
+                      onClick={() => { void handleSelectAthan(athan, 'main'); }}
                     >
                       <p className="text-[var(--color-text)] font-medium truncate">{athan.muezzinName}</p>
                       <p className="text-sm text-[var(--color-muted)] truncate">
@@ -1224,10 +1251,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                     {settings.athan.downloadedAthans.map((athan) => (
                       <div
                         key={`fajr-${athan.id}`}
-                        onClick={async () => {
-                          const channelId = await selectAthan(athan, settings.athan.currentFajrChannelId, 'fajr');
-                          updateAthan({ selectedFajrAthanId: athan.id, currentFajrChannelId: channelId });
-                        }}
+                        onClick={() => { void handleSelectAthan(athan, 'fajr'); }}
                         className={`flex items-center gap-3 p-4 rounded-lg cursor-pointer transition-colors ${
                           settings.athan.selectedFajrAthanId === athan.id
                             ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]'

@@ -1,4 +1,4 @@
-import { LocalNotifications, type ScheduleOptions } from '@capacitor/local-notifications';
+import { LocalNotifications, type Importance, type ScheduleOptions } from '@capacitor/local-notifications';
 import type { PrayerName, AllPrayerNames, Settings, NotificationSound, JumuahSettings, SurahKahfSettings, AthanSettings, Coordinates, NotificationCategory } from '../types';
 import { calculatePrayerTimes } from './prayerService';
 
@@ -51,13 +51,72 @@ const PRAYER_MESSAGES: Record<PrayerName, { reminder: string; atTime: string }> 
   isha: { reminder: 'Isha prayer coming soon', atTime: 'Time for Isha prayer' },
 };
 
-// Map built-in sound types to actual sound file names
-const BUILT_IN_SOUNDS: Record<string, string | undefined> = {
-  default: undefined, // Uses system default
-  adhan: 'adhan.wav',
-  adhan_fajr: 'adhan_fajr.wav',
-  silent: 'silent.wav',
+/**
+ * One app-owned Android channel per built-in sound.
+ *
+ * On Android 8+ a notification's sound comes from its channel and `setSound()`
+ * on the builder is ignored. Every built-in option used to post to the plugin's
+ * single "default" channel — created once, with a sound read from
+ * capacitor.config.ts's `LocalNotifications.sound`, which is unset — so all four
+ * options made the same generic system noise, "Silent" included. A channel's
+ * sound also cannot be changed after creation, so bundling the missing audio
+ * alone would not have fixed it.
+ *
+ * `ships` records whether the audio is actually in
+ * `android/app/src/main/res/raw`. A channel pointing at a missing resource falls
+ * back silently, which is how the two adhan options came to be indistinguishable
+ * from Default — so while no recording cleared for redistribution is bundled,
+ * they route to the user's downloaded athan if one is selected and to the
+ * default channel otherwise, and no channel is created for them. Add the file to
+ * res/raw and flip `ships` to make the bundled adhan live.
+ *
+ * Importance 4 (HIGH) gives audible options a heads-up; the plugin's own default
+ * channel is 3, which never shows one — wrong for a prayer notification.
+ * Importance 2 (LOW) is how "Silent" works: Android plays no sound at all at
+ * that importance, so it needs no silent audio file.
+ */
+const BUILT_IN_SOUNDS: Record<string, {
+  file?: string;
+  channelId: string;
+  channelName: string;
+  importance: Importance;
+  ships: boolean;
+}> = {
+  default: { channelId: 'ontime_prayer', channelName: 'Prayer times', importance: 4, ships: true },
+  silent: { channelId: 'ontime_prayer_silent', channelName: 'Prayer times (silent)', importance: 2, ships: true },
+  adhan: { file: 'adhan.wav', channelId: 'ontime_prayer_adhan', channelName: 'Prayer times (Adhan)', importance: 4, ships: false },
+  adhan_fajr: { file: 'adhan_fajr.wav', channelId: 'ontime_prayer_adhan_fajr', channelName: 'Prayer times (Adhan Fajr)', importance: 4, ships: false },
 };
+
+let builtInChannels: Promise<void> | null = null;
+
+/**
+ * Create the app-owned channels for the built-in sounds. Android ignores a
+ * repeat creation for an existing id, so this is safe to call on every
+ * reschedule; the memo just keeps a full rebuild from issuing redundant bridge
+ * calls.
+ */
+export function ensureBuiltInSoundChannels(): Promise<void> {
+  builtInChannels ??= (async () => {
+    for (const builtIn of Object.values(BUILT_IN_SOUNDS)) {
+      if (!builtIn.ships) continue;
+      try {
+        await LocalNotifications.createChannel({
+          id: builtIn.channelId,
+          name: builtIn.channelName,
+          description: '',
+          sound: builtIn.file,
+          importance: builtIn.importance,
+          visibility: 1,
+        });
+      } catch {
+        // Pre-Android-8 has no channels; the per-notification sound still
+        // applies there, so there is nothing to set up.
+      }
+    }
+  })();
+  return builtInChannels;
+}
 
 // Check if a prayer name is a core prayer (not optional)
 function isCorePrayer(name: AllPrayerNames): name is PrayerName {
@@ -107,7 +166,7 @@ function getSoundForNotification(sound: NotificationSound): string | undefined {
     // Downloaded athans use channels, not sound files directly
     return undefined;
   }
-  return BUILT_IN_SOUNDS[sound];
+  return BUILT_IN_SOUNDS[sound]?.file;
 }
 
 // Resolve the notification channel ID based on prayer, sound, and athan settings
@@ -127,7 +186,11 @@ function resolveChannelId(
     if (athanSettings.selectedAthanId === athanId && athanSettings.currentChannelId) {
       return athanSettings.currentChannelId;
     }
-    // Fallback: use the main channel if any athan is selected
+    // Legacy value: the per-prayer athan picker no longer exists, because no
+    // channel was ever created for a non-selected athan and the choice could
+    // not be honoured. Values stored before its removal still land here — the
+    // main athan is the closest thing to what the user asked for, and it is
+    // what the 'adhan' option resolves to as well.
     if (athanSettings.currentChannelId) {
       return athanSettings.currentChannelId;
     }
@@ -142,7 +205,15 @@ function resolveChannelId(
   if ((sound === 'adhan' || sound === 'adhan_fajr') && athanSettings.currentChannelId) {
     return athanSettings.currentChannelId;
   }
-  return undefined;
+  // Built-in sounds each get their own channel, which is the only thing that
+  // makes the choice audible at all on Android 8+.
+  const builtIn = BUILT_IN_SOUNDS[sound];
+  if (builtIn?.ships) {
+    return builtIn.channelId;
+  }
+  // No bundled audio for it and no downloaded athan selected: still land on the
+  // app's own heads-up channel rather than the plugin's IMPORTANCE_DEFAULT one.
+  return BUILT_IN_SOUNDS.default.channelId;
 }
 
 // ID range boundaries for each notification category
@@ -167,6 +238,10 @@ export async function scheduleNotifications(
     console.warn('Notification permission not granted');
     return;
   }
+
+  // Channels carry the sound on Android 8+, so they have to exist before any
+  // notification that names one is posted.
+  await ensureBuiltInSoundChannels();
 
   // Cancel only prayer-range notifications, not other categories
   await cancelByCategory('prayer');
