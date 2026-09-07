@@ -122,4 +122,77 @@ describe('User story: My settings persist across app restarts', () => {
     expect(captured).not.toBeNull();
     expect(captured!.calculationMethod).toBe('NorthAmerica');
   });
+
+  it('does not overwrite stored settings when the read itself fails', async () => {
+    vi.useFakeTimers();
+    try {
+      // A transient bridge failure means we have no idea what is on disk, so
+      // writing the defaults we are holding would erase the user's real
+      // profile — calculation method, saved locations, downloaded athans, all
+      // of it. Stay read-only instead.
+      vi.mocked(Preferences.get).mockRejectedValue(new Error('bridge not ready'));
+      vi.mocked(Preferences.set).mockClear();
+
+      await act(async () => {
+        renderSettingsInspector(() => {});
+      });
+      // Drain the bounded retry loop.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(Preferences.set).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a failed read and keeps the profile when a retry succeeds', async () => {
+    vi.useFakeTimers();
+    try {
+      const stored = JSON.stringify({ calculationMethod: 'Karachi', designStyle: 'islamic' });
+      vi.mocked(Preferences.get)
+        .mockRejectedValueOnce(new Error('bridge not ready'))
+        .mockResolvedValue({ value: stored });
+      vi.mocked(Preferences.set).mockClear();
+
+      let captured: Settings | null = null;
+      await act(async () => {
+        renderSettingsInspector((s) => { captured = s; });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(captured!.calculationMethod).toBe('Karachi');
+      const lastWrite = vi.mocked(Preferences.set).mock.calls.at(-1)?.[0].value;
+      expect(lastWrite ? JSON.parse(lastWrite).calculationMethod : null).toBe('Karachi');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still seeds defaults on a genuine fresh install', async () => {
+    vi.mocked(Preferences.get).mockResolvedValue({ value: null });
+    vi.mocked(Preferences.set).mockClear();
+
+    await act(async () => {
+      renderSettingsInspector(() => {});
+    });
+
+    // Nothing on disk to protect, so persisting the defaults is correct.
+    expect(Preferences.set).toHaveBeenCalled();
+  });
+
+  it('persists defaults over data that is present but unparseable', async () => {
+    vi.mocked(Preferences.get).mockResolvedValue({ value: 'not-valid-json{{{' });
+    vi.mocked(Preferences.set).mockClear();
+
+    await act(async () => {
+      renderSettingsInspector(() => {});
+    });
+
+    // The read succeeded, so there is no intact profile left to protect.
+    expect(Preferences.set).toHaveBeenCalled();
+  });
 });

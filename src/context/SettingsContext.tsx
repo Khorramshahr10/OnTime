@@ -4,6 +4,12 @@ import type { Settings, CalculationMethod, AsrCalculation, PrayerName, OptionalP
 
 const SETTINGS_KEY = 'ontime_settings';
 
+// A rejected read leaves us holding defaults that are not what's on disk, so
+// persisting them would overwrite the user's profile. Cold-start bridge failures
+// are transient, so retry briefly before giving up and staying read-only.
+const LOAD_RETRIES = 2;
+const LOAD_RETRY_DELAY_MS = 400;
+
 const defaultPrayerNotification: PrayerNotificationSettings = {
   enabled: true,
   reminderMinutes: 15,
@@ -109,6 +115,10 @@ const SettingsContext = createContext<SettingsContextType | null>(null);
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
+  // Unlocked only once a read has actually succeeded. Until then "defaults" and
+  // "the user's real settings we failed to load" are indistinguishable, and
+  // writing would silently erase their profile.
+  const [canSave, setCanSave] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -117,14 +127,32 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // Save settings whenever they change
   useEffect(() => {
-    if (!isLoading) {
+    if (canSave) {
       saveSettings(settings);
     }
-  }, [settings, isLoading]);
+  }, [settings, canSave]);
 
   async function loadSettings() {
+    let value: string | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        ({ value } = await Preferences.get({ key: SETTINGS_KEY }));
+        break;
+      } catch (error) {
+        // The read itself failed, so the on-disk profile is unknown and saving
+        // the defaults we are holding would overwrite it. Cold-start bridge
+        // failures are transient, so retry briefly — and if it never succeeds,
+        // give up read-only rather than destroy data we could not load.
+        console.error('Failed to read settings:', error);
+        if (attempt >= LOAD_RETRIES) {
+          setIsLoading(false);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, LOAD_RETRY_DELAY_MS));
+      }
+    }
+
     try {
-      const { value } = await Preferences.get({ key: SETTINGS_KEY });
       if (value) {
         const parsed = JSON.parse(value);
         
@@ -194,10 +222,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error) {
-      console.error('Failed to load settings:', error);
-    } finally {
-      setIsLoading(false);
+      // Absent or unparseable data: the read itself succeeded, so there is no
+      // intact profile left to protect and defaults are safe to persist.
+      console.error('Failed to parse saved settings:', error);
     }
+    setCanSave(true);
+    setIsLoading(false);
   }
 
   async function saveSettings(newSettings: Settings) {
