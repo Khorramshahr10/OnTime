@@ -17,6 +17,8 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 
+import androidx.core.content.FileProvider;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -213,7 +215,21 @@ public class AthanPlugin extends Plugin implements SensorEventListener {
                 return;
             }
 
-            Uri soundUri = Uri.fromFile(soundFile);
+            // The process that actually plays a notification sound is SystemUI,
+            // which runs under a different uid. Since Android 11 the athans
+            // directory under getExternalFilesDir() is app-private, and a file://
+            // URI cannot be granted to another app at all — only content:// can
+            // be. So hand over a FileProvider URI and grant SystemUI read access,
+            // mirroring what Capacitor's own local-notifications plugin does for
+            // per-notification sounds.
+            Uri soundUri = FileProvider.getUriForFile(
+                    getContext(),
+                    getContext().getPackageName() + ".fileprovider",
+                    soundFile);
+            getContext().grantUriPermission(
+                    "com.android.systemui",
+                    soundUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
             AudioAttributes audioAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)

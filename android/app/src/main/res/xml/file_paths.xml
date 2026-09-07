@@ -2,4 +2,9 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- Downloaded athans live in getExternalFilesDir()/athans. A notification
+         channel's sound is played by SystemUI, so it has to be shared as a
+         content:// URI through the FileProvider declared in the manifest;
+         scoped to this one subdirectory rather than the whole external dir. -->
+    <external-files-path name="athans" path="athans/" />
 </paths>
