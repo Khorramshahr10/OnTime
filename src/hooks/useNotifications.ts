@@ -1,5 +1,8 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { scheduleNotifications, scheduleJumuahNotifications, scheduleSurahKahfNotifications, setupNotificationListeners } from '../services/notificationService';
+import { AthanPlugin } from '../plugins/athanPlugin';
 import { useSettings } from '../context/SettingsContext';
 import { useLocation } from '../context/LocationContext';
 
@@ -12,6 +15,14 @@ export function useNotifications(enabled = true) {
   const reschedule = useCallback(async () => {
     await scheduleNotifications(location.coordinates, settings);
   }, [location.coordinates, settings]);
+
+  // The latest reschedule, without making the exact-alarm watcher below depend
+  // on it: `reschedule` changes identity on every settings edit, and re-running
+  // that watcher would re-register a native listener each time.
+  const rescheduleRef = useRef(reschedule);
+  useEffect(() => {
+    rescheduleRef.current = reschedule;
+  });
 
   // Schedule Jumuah notifications when settings change
   const rescheduleJumuah = useCallback(async () => {
@@ -52,6 +63,47 @@ export function useNotifications(enabled = true) {
     const timer = setTimeout(() => { rescheduleSurahKahf(); }, 300);
     return () => clearTimeout(timer);
   }, [rescheduleSurahKahf, masterEnabled]);
+
+  // Android 12+ can deny SCHEDULE_EXACT_ALARM (denied by default on 14+ for a
+  // fresh install), so the alarms already armed are inexact and may land
+  // minutes late. Granting the permission afterwards does not upgrade them —
+  // they have to be rebuilt. Watch for the transition on resume instead of
+  // rescheduling on every foreground, which would churn the whole schedule.
+  const exactAlarmsMissing = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!enabled || Capacitor.getPlatform() !== 'android') return;
+
+    let handle: { remove: () => void } | undefined;
+    let cancelled = false;
+
+    const recheck = async () => {
+      try {
+        const { value } = await AthanPlugin.canScheduleExactAlarms();
+        if (cancelled) return;
+        const missing = !value;
+        const wasMissing = exactAlarmsMissing.current;
+        exactAlarmsMissing.current = missing;
+        if (wasMissing === true && !missing) await rescheduleRef.current();
+      } catch {
+        // Plugin unavailable — nothing to watch.
+      }
+    };
+
+    void recheck();
+    CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void recheck();
+    }).then((h) => {
+      // Torn down before registration resolved: drop the handle we were handed
+      // rather than leaking a listener into a hook that no longer exists.
+      if (cancelled) { h.remove(); return; }
+      handle = h;
+    });
+
+    return () => {
+      cancelled = true;
+      handle?.remove();
+    };
+  }, [enabled]);
 
   // Set up notification click listener
   useEffect(() => {
