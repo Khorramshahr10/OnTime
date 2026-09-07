@@ -31,6 +31,9 @@ const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ defau
 
 const ONBOARDING_KEY = 'ontime_onboarding_complete';
 
+// Kept out of the prayer notification range; see the note at the schedule call.
+const TRAVEL_PROMPT_NOTIFICATION_ID = 1300;
+
 function App() {
   const [isQiblaOpen, setIsQiblaOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -89,26 +92,49 @@ function App() {
     updatePrayerTimes(fajr, maghrib);
   }, [prayers, updatePrayerTimes]);
 
-  // Fire notification when travel is detected and pending confirmation
-  const prevTravelPendingRef = useRef(false);
+  // Fire a notification when travel is detected and pending confirmation.
+  const travelPromptQueuedRef = useRef(false);
   useEffect(() => {
-    const wasPending = prevTravelPendingRef.current;
-    prevTravelPendingRef.current = travelState.travelPending;
+    // Gated on the master toggle like every other notification. This one used
+    // to schedule itself straight through LocalNotifications, so a user who had
+    // switched notifications off still got pushed "Are you traveling?".
+    const wanted = settings.notifications.enabled && travelState.travelPending;
 
-    if (travelState.travelPending && !wasPending && travelState.distanceFromHomeKm !== null) {
-      const distanceText = formatDistance(travelState.distanceFromHomeKm, settings.distanceUnit);
-      LocalNotifications.schedule({
-        notifications: [{
-          // Outside the prayer range (1–999): prayer rescheduling cancels
-          // that whole range and would otherwise wipe this before it fires.
-          id: 1300,
-          title: 'Are you traveling?',
-          body: `You're about ${distanceText} from home \u2014 tap to enable shortened prayers.`,
-          schedule: { at: new Date(Date.now() + 500) },
-        }],
-      }).catch(() => {});
+    if (!wanted) {
+      // Withdraw a queued prompt when the toggle goes off, or once the user has
+      // answered or come home — otherwise it lands on top of the app they are
+      // actively using, half a second after they dismissed the dialog. Clearing
+      // the flag here is also what lets switching notifications back on re-ask:
+      // the old rising-edge trigger had already latched and never fired again.
+      if (travelPromptQueuedRef.current) {
+        travelPromptQueuedRef.current = false;
+        LocalNotifications.cancel({
+          notifications: [{ id: TRAVEL_PROMPT_NOTIFICATION_ID }],
+        }).catch(() => {});
+      }
+      return;
     }
-  }, [travelState.travelPending, travelState.distanceFromHomeKm, settings.distanceUnit]);
+
+    if (travelPromptQueuedRef.current || travelState.distanceFromHomeKm === null) return;
+
+    travelPromptQueuedRef.current = true;
+    const distanceText = formatDistance(travelState.distanceFromHomeKm, settings.distanceUnit);
+    LocalNotifications.schedule({
+      notifications: [{
+        // Outside the prayer range (1–999): prayer rescheduling cancels
+        // that whole range and would otherwise wipe this before it fires.
+        id: TRAVEL_PROMPT_NOTIFICATION_ID,
+        title: 'Are you traveling?',
+        body: `You're about ${distanceText} from home \u2014 tap to enable shortened prayers.`,
+        schedule: { at: new Date(Date.now() + 500) },
+      }],
+    }).catch(() => {});
+  }, [
+    travelState.travelPending,
+    travelState.distanceFromHomeKm,
+    settings.distanceUnit,
+    settings.notifications.enabled,
+  ]);
 
   // Show nothing while checking onboarding status
   if (showOnboarding === null) return null;
