@@ -1,5 +1,5 @@
 diff --git a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
-index d4a84f6..cdb8e78 100644
+index d4a84f6..e9ac092 100644
 --- a/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
 +++ b/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs
 @@ -283,6 +283,7 @@ var genTilesCoords = function genTilesCoords(level, isMercator) {
@@ -10,16 +10,22 @@ index d4a84f6..cdb8e78 100644
  var TILE_SEARCH_RADIUS_CAMERA_DISTANCE = 3; // Euclidean distance factor, in units of camera distance to surface
  var TILE_SEARCH_RADIUS_SURFACE_DISTANCE = 90; // in degrees on the globe surface, relative to camera altitude in globe radius units
  var _radius = /*#__PURE__*/new WeakMap();
-@@ -321,7 +322,7 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
+@@ -321,7 +322,13 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
      _defineProperty(_this, "minLevel", void 0);
      _defineProperty(_this, "maxLevel", void 0);
      _defineProperty(_this, "thresholds", _toConsumableArray(new Array(30)).map(function (_, idx) {
 -      return 8 / Math.pow(2, idx);
-+      return [100, 90, 80, 70, 60, 0.2, 0.1, 0.06][idx] || 0.0001;
++      // Upstream's geometric ramp, clamped so the deepest zoom stops at level 7
++      // instead of 8+ (an octree over 65536 tiles is what the upstream comment
++      // warns about). The ramp has to stay monotonic and must actually descend
++      // into the altitudes the host app uses: a flat high-value prefix leaves
++      // indices 0-4 unreachable, pins the level to the first small threshold,
++      // and requests the entire globe's tile grid in one go.
++      return idx < 7 ? 8 / Math.pow(2, idx) : 0.0001;
      }));
      // in terms of radius units
      _defineProperty(_this, "curvatureResolution", 5);
-@@ -394,17 +395,34 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
+@@ -394,17 +401,34 @@ var ThreeSlippyMapGlobe = /*#__PURE__*/function (_Group) {
          return d.obj && (d.obj.material.depthWrite = false);
        }));
  
@@ -59,7 +65,7 @@ index d4a84f6..cdb8e78 100644
        }
        _assertClassBrand(_ThreeSlippyMapGlobe_brand, this, _fetchNeededTiles).call(this);
      }
-@@ -557,6 +575,10 @@ function _fetchNeededTiles() {
+@@ -557,6 +581,10 @@ function _fetchNeededTiles() {
    });
    */
  
