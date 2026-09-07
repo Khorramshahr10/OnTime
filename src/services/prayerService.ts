@@ -72,6 +72,17 @@ export function asrShadowFactor(asrCalc: AsrCalculation): number {
   return asrCalc === 'Hanafi' ? 2 : 1;
 }
 
+/**
+ * Prayers that don't occur at extreme latitudes arrive from adhan as Invalid
+ * Date (midnight sun / polar night). Anything that renders or compares a prayer
+ * time has to check this first: every comparison against NaN is false, so an
+ * invalid time slips through `time <= now` guards and ends up rendered as a
+ * countdown to nothing.
+ */
+export function isValidPrayerTime(date: Date): boolean {
+  return !Number.isNaN(date.getTime());
+}
+
 // Resolve the device's current IANA timezone string
 export function getTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -111,8 +122,13 @@ export function calculatePrayerTimes(
     lastThirdOfTheNight: sunnahTimes.lastThirdOfTheNight,
   };
 
-  const currentPrayerEnum = prayerTimes.currentPrayer();
-  const nextPrayerEnum = prayerTimes.nextPrayer();
+  // Resolved against `date`, not the wall clock. Called bare, adhan defaults
+  // both to `new Date()`, which mixed two clocks inside one function: the
+  // `> date.getTime()` future guard below compared a wall-clock answer against
+  // a caller-supplied instant, and a pair like "current = Sunrise, next = Fajr
+  // tomorrow" could come back for a date in the middle of the afternoon.
+  const currentPrayerEnum = prayerTimes.currentPrayer(date);
+  const nextPrayerEnum = prayerTimes.nextPrayer(date);
 
   const prayerEnumToName = (p: typeof Prayer[keyof typeof Prayer]): PrayerName | null => {
     switch (p) {
@@ -126,22 +142,20 @@ export function calculatePrayerTimes(
     }
   };
 
-  const isValidTime = (d: Date) => !Number.isNaN(d.getTime());
-
   // At extreme latitudes adhan returns Invalid Date for prayers that don't
   // occur (midnight sun / polar night) — yet nextPrayer() can still name one
   // of them. Resolve current/next only against prayers with real times so the
   // countdown never renders NaN.
   const currentPrayerName = prayerEnumToName(currentPrayerEnum);
   const currentPrayer =
-    currentPrayerName && isValidTime(prayerTimes[currentPrayerName]) ? currentPrayerName : null;
+    currentPrayerName && isValidPrayerTime(prayerTimes[currentPrayerName]) ? currentPrayerName : null;
 
   const CORE_ORDER: PrayerName[] = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
   const nextValidIn = (times: PrayerTimes, after: Date): { name: PrayerName; time: Date } | null => {
     let best: { name: PrayerName; time: Date } | null = null;
     for (const name of CORE_ORDER) {
       const time = times[name];
-      if (isValidTime(time) && time.getTime() > after.getTime() && (!best || time < best.time)) {
+      if (isValidPrayerTime(time) && time.getTime() > after.getTime() && (!best || time < best.time)) {
         best = { name, time };
       }
     }
@@ -154,7 +168,7 @@ export function calculatePrayerTimes(
   let next: { name: PrayerName; time: Date } | null = null;
   // Also require a future time: once every prayer today has passed, adhan
   // wraps to Fajr but timeForPrayer still returns this morning's (past) one.
-  if (adhanNextName && adhanNextTime && isValidTime(adhanNextTime) && adhanNextTime.getTime() > date.getTime()) {
+  if (adhanNextName && adhanNextTime && isValidPrayerTime(adhanNextTime) && adhanNextTime.getTime() > date.getTime()) {
     next = { name: adhanNextName, time: adhanNextTime };
   } else {
     // Nothing valid left today (after Isha, or every remaining time invalid):

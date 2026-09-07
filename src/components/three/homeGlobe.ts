@@ -1280,8 +1280,15 @@ export class HomeGlobe {
 
     const fmt = (name: string) => {
       const p = this.data.prayers.find((x) => x.name === name);
-      if (!p) return null;
-      const t = p.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      // Skip prayers that don't occur at this latitude instead of rasterising
+      // "Invalid Date" into a sprite over the earth: adhan returns Invalid Date
+      // under midnight sun / polar night, and formatTime()'s em-dash guard does
+      // not reach this formatter. Inline rather than importing prayerService so
+      // adhan stays out of the lazy 3D chunk.
+      if (!p || Number.isNaN(p.time.getTime())) return null;
+      // hour12 to match formatTime(), so these labels and the HUD beside them
+      // agree on a device set to a 24-hour locale.
+      const t = p.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
       return `${name.charAt(0).toUpperCase() + name.slice(1)} ${t}`;
     };
 

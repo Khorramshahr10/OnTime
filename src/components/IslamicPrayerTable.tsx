@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatTime, getTimeUntil } from '../services/prayerService';
+import { formatTime, getTimeUntil, isValidPrayerTime } from '../services/prayerService';
 import { trackPrayer, getPrayerStatus, type PrayerStatus } from '../services/prayerTrackingService';
 import { useSettings } from '../context/SettingsContext';
 import { useTravel } from '../context/TravelContext';
@@ -396,7 +396,10 @@ function IslamicPrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, o
   const arabic = ARABIC_NAMES[prayer.name];
 
   useEffect(() => {
-    if (!isSelected || showTrackingPrompt) { setCountdown(''); return; }
+    // Invalid Date where the prayer doesn't occur at this latitude: NaN fails
+    // every comparison below, so the row would sit on "< 1 min" forever. The
+    // time column already renders an em dash. See the PrayerTable equivalent.
+    if (!isSelected || showTrackingPrompt || !isValidPrayerTime(prayer.time)) { setCountdown(''); return; }
     const updateCountdown = () => {
       if (prayer.time <= new Date()) { setCountdown('Passed'); return; }
       const { hours, minutes } = getTimeUntil(prayer.time);

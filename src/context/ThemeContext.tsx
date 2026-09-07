@@ -59,8 +59,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Update prayer times from the app
   const updatePrayerTimes = useCallback((fajr: Date | null, maghrib: Date | null) => {
-    setFajrTime(fajr);
-    setMaghribTime(maghrib);
+    // At polar latitudes adhan returns Invalid Date for prayers that don't
+    // occur. An Invalid Date is still a truthy object, so isNightTime's
+    // `!fajrTime || !maghribTime` fallback never engaged and every comparison
+    // against NaN came back false — pinning Auto to light around the clock,
+    // including straight through the polar night. Normalising to null here hands
+    // those users the clock-based 18:00-06:00 fallback instead.
+    const real = (d: Date | null) => (d && !Number.isNaN(d.getTime()) ? d : null);
+    setFajrTime(real(fajr));
+    setMaghribTime(real(maghrib));
   }, []);
 
   // Load saved theme on mount

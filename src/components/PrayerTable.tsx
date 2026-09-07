@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatTime, getTimeUntil } from '../services/prayerService';
+import { formatTime, getTimeUntil, isValidPrayerTime } from '../services/prayerService';
 import { trackPrayer, getPrayerStatus, type PrayerStatus } from '../services/prayerTrackingService';
 import { useSettings } from '../context/SettingsContext';
 import { useTravel } from '../context/TravelContext';
@@ -416,7 +416,12 @@ function PrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, onTap, o
 
   // Update countdown when selected
   useEffect(() => {
-    if (!isSelected || showTrackingPrompt) {
+    // A prayer that doesn't occur at this latitude — midnight sun or polar
+    // night — arrives as Invalid Date. Every comparison against NaN is false,
+    // so it slips past `prayerTime <= now` and every branch below and lands on
+    // "< 1 min", re-set every second forever. The time column already renders an
+    // em dash for it, so there is nothing here to count down to.
+    if (!isSelected || showTrackingPrompt || !isValidPrayerTime(prayer.time)) {
       setCountdown('');
       return;
     }
@@ -424,7 +429,7 @@ function PrayerRow({ prayer, isHighlighted, isSelected, trackingStatus, onTap, o
     const updateCountdown = () => {
       const now = new Date();
       const prayerTime = prayer.time;
-      
+
       if (prayerTime <= now) {
         setCountdown('Passed');
         return;
