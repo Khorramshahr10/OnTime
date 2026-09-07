@@ -42,7 +42,7 @@ A full-featured Islamic prayer times app for Android and iOS, built with React, 
 
 ### Location
 - GPS detection with reverse geocoding
-- City search across 200K+ cities worldwide
+- City search across 33,000+ cities worldwide (bundled GeoNames `cities15000`, population ≥ 15,000)
 - Manual coordinate entry
 - Save up to 20 previous locations
 
