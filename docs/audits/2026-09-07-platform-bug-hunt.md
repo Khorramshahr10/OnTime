@@ -38,6 +38,29 @@ Status: **CONFIRMED** = reproduced, or the code path is unambiguous · **SUSPECT
 >
 > Each of the four behaviour fixes was **mutation-tested**: reverting the fix in place makes exactly the intended tests fail and nothing else. For PM-1 and NT-9 both directions were checked (restoring the bug fails the positive test; over-applying the fix fails the negative ones).
 
+> **Fix pass 2 (2026-09-07, same day) — Batch 2 of §8.** Eight more findings fixed, in five commits.
+>
+> | Fixed | Change | Regression test |
+> |---|---|---|
+> | **PM-2** | `calculatePrayerTimes` passes `date` to adhan's `currentPrayer()`/`nextPrayer()` instead of letting them default to the wall clock, so the function no longer mixes two clocks. The two tests that had given up on their assertions now assert the real wrap-to-tomorrow behaviour. | `prayer-times.test.ts` (+1, 2 restored) |
+> | **PM-3** *(partial)* | `isValidPrayerTime` exported from `prayerService`; both row components short-circuit an invalid time instead of falling through `NaN <= now` to a permanent "< 1 min". `polarCircleResolution` is **deliberately still unset** — see the note below. | via the tables |
+> | **PM-4** | `ThemeContext.updatePrayerTimes` normalises Invalid Dates to `null`, so `isNightTime`'s 18:00–06:00 fallback finally engages and Auto is no longer pinned to light through the polar night. | — |
+> | **GL-3** | The globe's label formatter skips invalid times instead of rasterising "Invalid Date" into sprites, and gains `hour12: true` so the pills match the HUD on a 24-hour locale. Inlined rather than importing `prayerService`, to keep `adhan` out of the lazy 3D chunk. | — |
+> | **ST-1** | `Dashboard.formatDate` uses the service's `getTodayKey()`/`getDateKey()` instead of `toISOString()` UTC keys. | — |
+> | **ST-2** | `getStats(days)` and `getRecentRecords(days)` now share one `dayKeyNDaysBack()` helper, so the weekly score covers the same days the cards show. The retention prune uses it too. | `prayer-tracking.test.ts` (+3) |
+> | **ST-5** | The UTC→local repair is one-shot behind a `dayKeySchema` marker that every save stamps, and it dedupes records that re-key onto the same day+prayer (newest wins). | as above |
+> | **LQ-4** | `travelStartDate` is stored as a full ISO instant. Field stays a string and old bare-date values still parse — no migration. | `travel.test.tsx` (+4) |
+> | **LQ-3** | Expiry is driven by one timeout armed for the exact instant (clamped and re-armed for the 32-bit delay limit), updating the instant the memo compares against — which also keeps the memo pure. | as above |
+> | **MH-1 / NT-8** | The travel prompt is gated on `settings.notifications.enabled`, withdraws a queued prompt when the toggle goes off or the user answers, and re-arms when the toggle comes back on. | — |
+> | **LQ-7** | Both permission paths accept `coarseLocation === 'granted'`, and `enableHighAccuracy` follows the actual grant. | `location-permissions.test.tsx` (4) |
+>
+> **PM-3 is only partly fixed, on purpose.** Setting `polarCircleResolution` (or `highLatitudeRule`, PM-8) means choosing between AqrabBalad and AqrabYaum for users above the polar circle. That is a fiqh decision and belongs in Settings next to the high-latitude rule, not hardcoded in a service. What changed is that those users now get an honest em dash everywhere instead of "Invalid Date" on the globe and a permanent "< 1 min" in the night rows. **The product decision is still open.**
+>
+> **One self-inflicted regression caught and fixed:** strengthening the two `prayer-times` assertions made them timezone-fragile — they passed on this machine and failed under `TZ=UTC`, `Asia/Karachi`, `Pacific/Kiritimati` and `Pacific/Niue`, because "23:00" is a different point in Toronto's solar day depending on where the suite runs and adhan derives the solar day from the Date's *local* components. That file is now pinned to `America/Toronto`. The suite is green in all six timezones again.
+>
+> **Post-fix baseline:** `tsc -b` clean · **271/271 tests pass** (32 files, up from 231/27 at the start of the audit) · ESLint **19 errors + 1 warning — still identical to the pre-audit baseline** · `npm run build` succeeds · 271/271 under `TZ` = UTC, Asia/Karachi, Pacific/Kiritimati, Pacific/Niue, America/New_York, Australia/Sydney. LQ-4, LQ-3, ST-2, ST-5, LQ-7 and PM-2 were all mutation-tested.
+
+
 
 ---
 
