@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation } from '../context/LocationContext';
+import { useSettings } from '../context/SettingsContext';
+import { twilightAnglesFor, asrShadowFactor as shadowFactorFor } from '../services/prayerService';
 import { useQibla } from '../hooks/useQibla';
 import { GlobeLoader, GLOBE_LOADER_FADE_MS } from './GlobeLoader';
 import type { PrayerTime } from '../types';
@@ -47,6 +49,11 @@ const CONTROL_ACTIVE_STYLE: CSSProperties = {
  */
 export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerTime[]; covered?: boolean }) {
   const { location } = useLocation();
+  const { settings } = useSettings();
+  // The globe draws a ring per solar event, and those angles come from the
+  // calculation method and the Asr madhab rather than from the prayer times
+  // alone — two users on different methods get different rings for one sky.
+  const twilight = twilightAnglesFor(settings.calculationMethod);
   const [now, setNow] = useState(() => new Date());
   const [groundMode, setGroundMode] = useState(false);
   const { deviceHeading, qiblaDirection, accuracy, error, startListening, stopListening } = useQibla();
@@ -147,6 +154,9 @@ export function HomeGlobeScreen({ prayers, covered = false }: { prayers: PrayerT
             latitude: location.coordinates.latitude,
             longitude: location.coordinates.longitude,
             prayers,
+            fajrTwilightDeg: twilight.fajr,
+            ishaTwilightDeg: twilight.isha,
+            asrShadowFactor: shadowFactorFor(settings.asrCalculation),
             groundMode,
             deviceHeading,
             qiblaDirection,

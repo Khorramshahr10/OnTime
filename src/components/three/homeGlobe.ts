@@ -20,6 +20,12 @@ export interface HomeGlobeData {
   longitude: number;
   /** The user's prayer times, used to label the sun lines. */
   prayers: { name: string; time: Date }[];
+  /** Fajr twilight angle, degrees below the horizon, per the calculation method. */
+  fajrTwilightDeg: number;
+  /** Isha twilight angle, or null for interval-based methods (Umm al-Qura, Qatar). */
+  ishaTwilightDeg: number | null;
+  /** Asr shadow factor: 1 for the standard (Shafi'i) rule, 2 for Hanafi. */
+  asrShadowFactor: number;
   /** Ground-view (qibla) mode: camera drops to the user and follows the compass. */
   groundMode?: boolean;
   /** Device compass heading, degrees clockwise from true north (null = none). */
@@ -100,10 +106,11 @@ const KAABA_SCALE = 2.2;
 const GROUND_FLY_DURATION_MS = 900;
 /** Ground camera looks slightly down (tan of the pitch angle, ~12°). */
 const GROUND_PITCH = 0.21;
-/** Sun angular distance from the sub-solar point for each solar event. */
+/** Sun angular distance from the sub-solar point for each solar event.
+   Only the terminator is a constant: the Fajr/Isha and Asr rings depend on the
+   calculation method, the Asr madhab and the user's latitude, so they are
+   derived per rebuild — see twilightRingDeg() and asrRingDeg(). */
 const HORIZON_ANGLE_DEG = 90; // sunrise / sunset (sun on the horizon)
-const TWILIGHT_ANGLE_DEG = 108; // fajr / isha (sun 18° below the horizon)
-const ASR_ANGLE_DEG = 45; // asr, standard method (sun ~45° altitude)
 /** Latitude offset that keeps neighbouring labels apart at the limb. */
 const LABEL_STAGGER_DEG = 18;
 // Solar lines are drawn as fat lines (Line2): WebGL ignores LineBasicMaterial's
@@ -115,12 +122,14 @@ const SOLAR_LINE_WIDTH_PX = 5;
 
 // Shared with the globe HUD so the accent beside a prayer's name and its line
 // on the earth are the same colour.
-// One circle serves each pair — the terminator is both sunrise and sunset, the
-// twilight circle both fajr and isha — so only four of the six draw a line.
+// One circle serves the sunrise/sunset pair — the terminator is both. Fajr and
+// Isha each get their own whenever the method gives them different angles, so
+// up to four circles are drawn plus the noon meridian for Dhuhr.
 const FAJR_COLOR = PRAYER_COLORS.fajr;
 const SUNRISE_COLOR = PRAYER_COLORS.sunrise;
 const NOON_COLOR = PRAYER_COLORS.dhuhr;
 const ASR_COLOR = PRAYER_COLORS.asr;
+const ISHA_COLOR = PRAYER_COLORS.isha;
 
 const NIGHT_SHADE_ALTITUDE = 0.005;
 
@@ -137,9 +146,39 @@ function geo2xyz(lat: number, lon: number, r: number): { x: number; y: number; z
 }
 
 /**
+ * Angular distance from the sub-solar point of the ring on which the sun sits
+ * `degBelowHorizon` under the horizon. Fajr and Isha both live on such a ring,
+ * at whatever depression the selected calculation method specifies.
+ */
+function twilightRingDeg(degBelowHorizon: number): number {
+  return 90 + degBelowHorizon;
+}
+
+/**
+ * Angular distance from the sub-solar point of the ring on which the sun
+ * reaches its Asr altitude.
+ *
+ * Asr is when a shadow reaches `shadowFactor` times the object's length on top
+ * of its noon length, i.e. sun altitude arccot(shadowFactor + tan|φ − δ|) for
+ * latitude φ and solar declination δ. That is 45° only in the special case of
+ * the standard rule at a latitude the sun is directly over — so a single
+ * hard-coded ring was wrong for essentially every user, and wronger still for
+ * Hanafi, whose factor of 2 puts Asr at a much lower sun.
+ */
+function asrRingDeg(latitude: number, declination: number, shadowFactor: number): number {
+  // Clamped at 90°: past that the sun never rises, tan() goes negative and the
+  // shadow formula leaves its domain, which would put the ring on the far side
+  // of the globe. Asr degenerates to the horizon there instead. At exactly 90°
+  // tan() is finite but enormous, so the altitude collapses to 0 cleanly.
+  const zenithGap = Math.min(Math.abs(latitude - declination), 90);
+  const altitudeDeg = Math.atan(1 / (shadowFactor + Math.tan(zenithGap * D2R))) / D2R;
+  return 90 - altitudeDeg;
+}
+
+/**
  * Points along the circle where the sun sits at a given altitude: the angular
  * distance from the sub-solar point is `thetaDeg` (90° = horizon/terminator,
- * 108° = twilight, ~45° = Asr). The terminator is the thetaDeg=90 case.
+ * 90° + the twilight angle = fajr/isha, 90° − the Asr altitude = Asr).
  */
 function sunAltitudeCircle(sunDir: THREE.Vector3, thetaDeg: number, radius: number, segments = 128): THREE.Vector3[] {
   const up = Math.abs(sunDir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
@@ -682,6 +721,12 @@ export class HomeGlobe {
       data.latitude,
       data.longitude,
       data.prayers.map((p) => `${p.name}${p.time.getTime()}`).join(','),
+      // The twilight and Asr rings are derived from these, so switching
+      // calculation method or Asr madhab has to rebuild the lines even when
+      // the resulting prayer times happen to be identical.
+      data.fajrTwilightDeg,
+      data.ishaTwilightDeg ?? 'no-isha-angle',
+      data.asrShadowFactor,
     ].join('|');
   }
 
@@ -1262,10 +1307,23 @@ export class HomeGlobe {
     const addCircle = (thetaDeg: number, color: string, opacity: number, widthPx: number) =>
       addFatLine(sunAltitudeCircle(sunDir, thetaDeg, radius), color, opacity, widthPx);
 
+    // Every ring but the terminator is derived: the twilight depression comes
+    // from the calculation method, and the Asr altitude from the user's
+    // latitude, today's declination (sunLat) and the Asr madhab.
+    const fajrRing = twilightRingDeg(this.data.fajrTwilightDeg);
+    // Interval-based methods fix Isha at Maghrib + N minutes, so no solar angle
+    // exists and there is no ring to draw. The label still needs an anchor, so
+    // it borrows the Fajr ring's eastern side.
+    const ishaRing = this.data.ishaTwilightDeg === null ? null : twilightRingDeg(this.data.ishaTwilightDeg);
+    const asrRing = asrRingDeg(this.data.latitude, sunLat, this.data.asrShadowFactor);
+
     // Horizon (sunrise/sunset terminator), twilight (fajr/isha), Asr.
     addCircle(HORIZON_ANGLE_DEG, SUNRISE_COLOR, 0.95, SOLAR_LINE_WIDTH_PX);
-    addCircle(TWILIGHT_ANGLE_DEG, FAJR_COLOR, 0.75, SOLAR_LINE_WIDTH_PX);
-    addCircle(ASR_ANGLE_DEG, ASR_COLOR, 0.85, SOLAR_LINE_WIDTH_PX);
+    addCircle(fajrRing, FAJR_COLOR, 0.75, SOLAR_LINE_WIDTH_PX);
+    if (ishaRing !== null && ishaRing !== fajrRing) {
+      addCircle(ishaRing, ISHA_COLOR, 0.75, SOLAR_LINE_WIDTH_PX);
+    }
+    addCircle(asrRing, ASR_COLOR, 0.85, SOLAR_LINE_WIDTH_PX);
 
     // Noon meridian (Dhuhr).
     addFatLine(meridianPoints(sunLon, radius), NOON_COLOR, 1, SOLAR_LINE_WIDTH_PX);
@@ -1277,11 +1335,11 @@ export class HomeGlobe {
     const at = (theta: number, lat: number, side: 1 | -1) =>
       labelPoint(sunLat, sunLon, theta, lat, side) ?? { lat: 0, lon: sunLon + side * theta };
     const S = LABEL_STAGGER_DEG;
-    const fajrAt = at(TWILIGHT_ANGLE_DEG, S, -1);
+    const fajrAt = at(fajrRing, S, -1);
     const sunriseAt = at(HORIZON_ANGLE_DEG, -S, -1);
-    const asrAt = at(ASR_ANGLE_DEG, 0, 1);
+    const asrAt = at(asrRing, 0, 1);
     const maghribAt = at(HORIZON_ANGLE_DEG, -S, 1);
-    const ishaAt = at(TWILIGHT_ANGLE_DEG, S, 1);
+    const ishaAt = at(ishaRing ?? fajrRing, S, 1);
 
     addLabel(fajrAt.lat, fajrAt.lon, fmt('fajr'), PRAYER_ACCENTS.fajr);
     addLabel(sunriseAt.lat, sunriseAt.lon, fmt('sunrise'), PRAYER_ACCENTS.sunrise);

@@ -50,6 +50,28 @@ function getCalculationParameters(method: CalcMethodType): CalculationParameters
   return methods[method]();
 }
 
+/**
+ * Twilight angles for a calculation method, in degrees below the horizon, from
+ * the same parameter table `calculatePrayerTimes` uses — so the globe's drawn
+ * rings and the actual computed times can't drift apart.
+ *
+ * `isha` is null for the interval-based methods (Umm al-Qura, Qatar), where
+ * Isha is Maghrib plus a fixed number of minutes and no solar angle exists.
+ */
+export function twilightAnglesFor(method: CalcMethodType): { fajr: number; isha: number | null } {
+  const params = getCalculationParameters(method);
+  const isha = params.ishaInterval > 0 || params.ishaAngle <= 0 ? null : params.ishaAngle;
+  return { fajr: params.fajrAngle, isha };
+}
+
+/**
+ * Asr shadow factor: how many times an object's length its shadow must reach,
+ * beyond its noon length. 1 is the standard (Shafi'i) rule, 2 is Hanafi.
+ */
+export function asrShadowFactor(asrCalc: AsrCalculation): number {
+  return asrCalc === 'Hanafi' ? 2 : 1;
+}
+
 // Resolve the device's current IANA timezone string
 export function getTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
