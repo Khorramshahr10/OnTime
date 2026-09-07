@@ -5,6 +5,19 @@ import type { LocationData, Coordinates } from '../types';
 
 const LOCATION_KEY = 'ontime_location';
 
+/**
+ * Whether a permission result is good enough to locate the user.
+ *
+ * `location` reports granted only when the app holds BOTH coarse and fine
+ * accuracy, so on Android 12+ a user who picks "Approximate" comes back denied
+ * there while `coarseLocation` is granted. Treating that as a refusal left the
+ * app stuck on its default city even though a usable ~1-3 km fix was already in
+ * hand — and prayer times only need city-level accuracy.
+ */
+function canLocate(status: { location?: string; coarseLocation?: string }): boolean {
+  return status.location === 'granted' || status.coarseLocation === 'granted';
+}
+
 // Default to Mecca if no location is available
 const defaultLocation: LocationData = {
   coordinates: { latitude: 21.4225, longitude: 39.8262 },
@@ -69,19 +82,22 @@ export function LocationProvider({ children }: { children: ReactNode }) {
 
     try {
       // Check permissions first
-      const permStatus = await Geolocation.checkPermissions();
+      let permission = await Geolocation.checkPermissions();
 
-      if (permStatus.location === 'denied') {
+      if (!canLocate(permission)) {
         // Request permission
-        const requestResult = await Geolocation.requestPermissions();
-        if (requestResult.location === 'denied') {
+        permission = await Geolocation.requestPermissions();
+        if (!canLocate(permission)) {
           setError('Location permission denied');
           return undefined;
         }
       }
 
       const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
+        // High accuracy needs ACCESS_FINE_LOCATION. Requesting it on an
+        // "Approximate" grant makes the fix sit until the timeout instead of
+        // returning the coarse one, which is plenty for prayer times.
+        enableHighAccuracy: permission.location === 'granted',
         timeout: 10000,
       });
 
@@ -165,17 +181,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }
 
   async function getGPSLocation(): Promise<LocationData> {
-    const permStatus = await Geolocation.checkPermissions();
+    let permission = await Geolocation.checkPermissions();
 
-    if (permStatus.location === 'denied') {
-      const requestResult = await Geolocation.requestPermissions();
-      if (requestResult.location === 'denied') {
+    if (!canLocate(permission)) {
+      permission = await Geolocation.requestPermissions();
+      if (!canLocate(permission)) {
         throw new Error('Location permission denied');
       }
     }
 
     const position = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
+      enableHighAccuracy: permission.location === 'granted',
       timeout: 10000,
     });
 
