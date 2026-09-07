@@ -60,6 +60,25 @@ Status: **CONFIRMED** = reproduced, or the code path is unambiguous · **SUSPECT
 >
 > **Post-fix baseline:** `tsc -b` clean · **271/271 tests pass** (32 files, up from 231/27 at the start of the audit) · ESLint **19 errors + 1 warning — still identical to the pre-audit baseline** · `npm run build` succeeds · 271/271 under `TZ` = UTC, Asia/Karachi, Pacific/Kiritimati, Pacific/Niue, America/New_York, Australia/Sydney. LQ-4, LQ-3, ST-2, ST-5, LQ-7 and PM-2 were all mutation-tested.
 
+> **Fix pass 3 (2026-09-07, same day) — Batch 3, the athan cluster.** Fixed as a set, since fixing one alone leaves the feature broken. Three product decisions were taken by the owner first: remove the per-prayer athan picker, ship real audio, and write the native sound fix now with a device checklist.
+>
+> | Fixed | Change | Regression test |
+> |---|---|---|
+> | **NT-10** | `downloadAthan` now checks the HTTP status, rejects a response whose content type is a document rather than audio, and rejects a payload too small to be a recording — none of which `CapacitorHttp` throws on. `fetchAthanCatalog` checks status too, and a 200 that scrapes to zero entries now reports a layout change instead of rendering "No athans found". | `athan-download.test.ts` (+5) |
+> | **NT-1** | `selectAthan` builds the replacement channel **before** retiring the working one, and re-selecting the same athan no longer deletes the channel it just recreated. The three bare `async onClick` handlers in Settings are now one `handleSelectAthan` with a try/catch and a visible error banner. | as above (+5) |
+> | **NT-3** | The per-prayer "Downloaded Athans" optgroup is gone — no channel was ever created for a non-selected athan, so the choice could not be honoured. Legacy `athan:<id>` values still resolve to the main athan channel and now display as "Adhan" rather than rendering a blank dropdown. | via `notifications.test.ts` |
+> | **NT-5** | Each built-in sound gets its own app-owned Android channel, because on API 26+ the sound comes from the channel and the builder's `setSound()` is ignored. "Silent" is a `IMPORTANCE_LOW` channel, which Android plays with no sound at all — so it needs **no** silent audio file. Audible options are `IMPORTANCE_HIGH`, which also gives prayer notifications a heads-up banner they never had (this closes NT-18's importance half). Channels are created once and memoised. | `notification-sound-channels.test.ts` (6) |
+> | **NT-14** | `AthanPlugin.createAthanChannel` now serves the sound as a `FileProvider` `content://` URI with an explicit `grantUriPermission` to `com.android.systemui`, and `res/xml/file_paths.xml` gains an `<external-files-path>` entry scoped to `athans/`. A `file://` URI cannot be granted to another app at all, and since Android 11 that directory is app-private while SystemUI is what plays the sound. | compiles; **needs a device** |
+>
+> **Not fixed, deliberately — NT-5's audio.** `android/app/src/main/res/raw/` is still empty. The four MP3s in the untracked `athan-audio/` folder have no established provenance, and committing audio into a shipped app without knowing it is cleared for redistribution is not a call to make silently. The mechanism is fully wired behind a `ships` flag per sound: drop `adhan.mp3` / `adhan_fajr.mp3` into `res/raw`, flip the flag, and the bundled adhan goes live. The unit tests assert that no channel is created for a sound marked `ships: false`, so flipping the flag without adding the file fails the suite. The picker labels no longer claim "(Built-in)".
+>
+> **NT-6 skipped.** Gating the athan UI to Android only matters for iOS, which is not a shipping target (§4).
+>
+> **Verification beyond the JS suite:** `./gradlew compileDebugJavaWithJavac` and `./gradlew processDebugResources` both pass, so the native change compiles and the XML is valid. `getPackageName() + ".fileprovider"` matches the manifest's `${applicationId}.fileprovider` across build variants. What a desktop cannot tell you is whether Android actually plays the sound — see **`docs/audits/2026-09-07-athan-device-check.md`**, which includes the step people most often get wrong: Android caches a channel's sound from first creation, so an existing install's `athan_main_<id>` channel must be cleared before the fix can be observed.
+>
+> **Post-fix baseline:** `tsc -b` clean · **287/287 tests pass** (33 files) · ESLint **19 errors + 1 warning — still the pre-audit baseline** · `npm run build` succeeds · 287/287 under four timezones · `compileDebugJavaWithJavac` and `processDebugResources` pass. NT-1, NT-10 and NT-5 were mutation-tested.
+
+
 
 
 ---
