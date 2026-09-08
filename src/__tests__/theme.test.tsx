@@ -113,3 +113,44 @@ describe('User story: The app respects my chosen color theme', () => {
     }
   });
 });
+
+describe('browser chrome colour (ST-9)', () => {
+  /** index.html declares two, media-scoped light and dark. */
+  function installBothMetas() {
+    document.head.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+    for (const [scheme, content] of [['light', '#FAFAFA'], ['dark', '#0F0F0F']] as const) {
+      const meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      meta.setAttribute('media', `(prefers-color-scheme: ${scheme})`);
+      meta.setAttribute('content', content);
+      document.head.appendChild(meta);
+    }
+  }
+
+  const contents = () =>
+    [...document.head.querySelectorAll('meta[name="theme-color"]')].map((m) =>
+      m.getAttribute('content'),
+    );
+
+  it('tints both declared metas, not only the first one querySelector finds', async () => {
+    installBothMetas();
+    const { Preferences } = await import('@capacitor/preferences');
+    vi.mocked(Preferences.get).mockResolvedValue({ value: 'desert' });
+
+    const { unmount } = await act(async () =>
+      render(
+        <ThemeProvider>
+          <ThemeInspector onTheme={() => {}} />
+        </ThemeProvider>,
+      ),
+    );
+
+    // querySelector always returned the light-scoped one, so under a dark OS
+    // preference the meta the browser was actually applying never got written:
+    // dark chrome over a light app, and Desert/Rose/Forest/Ocean never tinting
+    // the chrome at all.
+    expect(contents()).toEqual(['#1C1510', '#1C1510']);
+    unmount();
+    document.documentElement.classList.remove('dark', 'desert', 'rose', 'forest', 'ocean');
+  });
+});

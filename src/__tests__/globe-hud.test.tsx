@@ -31,7 +31,11 @@ describe('User story: at a glance on the globe I see what is next and how long',
   it('leads with the next prayer, its clock time and the countdown', () => {
     const { container } = renderHud();
     expect(screen.getByText('Asr')).toBeInTheDocument();
-    expect(screen.getByText('1:16:03')).toBeInTheDocument();
+    // Hours are zero-padded like the minutes and seconds. Unpadded, the 40px
+    // hero row reflowed the moment the countdown crossed 10:00:00 into
+    // 9:59:59 — and since 31061fc put the countdown beside the prayer name,
+    // that jump moved the name with it.
+    expect(screen.getByText('01:16:03')).toBeInTheDocument();
     // The clock time is split so the meridiem can be set smaller than the hour.
     expect(container.textContent).toContain('4:29');
     expect(container.textContent).toContain('PM');
@@ -42,9 +46,9 @@ describe('User story: at a glance on the globe I see what is next and how long',
     const hero = container.querySelector('[style*="font-size: 40px"]') as HTMLElement;
     expect(hero).toBeTruthy();
     expect(hero.textContent).toContain('4:29');
-    expect(hero.textContent).not.toContain('1:16:03');
+    expect(hero.textContent).not.toContain('01:16:03');
     // The countdown runs quietly beside the prayer name instead.
-    expect(screen.getByText('1:16:03').className).toContain('text-base');
+    expect(screen.getByText('01:16:03').className).toContain('text-base');
   });
 
   it('condenses the current prayer and its sunnah into one context line', () => {
@@ -61,12 +65,12 @@ describe('User story: at a glance on the globe I see what is next and how long',
 
   it('leaves the countdown calm with more than 20 minutes to go', () => {
     renderHud({ hours: 0, minutes: 25, seconds: 0 });
-    expect(screen.getByText('0:25:00')).toHaveStyle({ color: 'rgba(245,246,248,0.55)' });
+    expect(screen.getByText('00:25:00')).toHaveStyle({ color: 'rgba(245,246,248,0.55)' });
   });
 
   it('warms the countdown inside the last 20 minutes', () => {
     renderHud({ hours: 0, minutes: 4, seconds: 30 });
-    expect(screen.getByText('0:04:30')).toHaveStyle({ color: '#ff8a75' });
+    expect(screen.getByText('00:04:30')).toHaveStyle({ color: '#ff8a75' });
   });
 
   it('names a combined prayer while travelling', () => {
@@ -88,7 +92,7 @@ describe('User story: at a glance on the globe I see what is next and how long',
     it('promotes the current prayer to the hero when the next one is hidden', () => {
       renderHud({ display: { ...ALL_ON, showNextPrayer: false } });
       expect(screen.getByText('Dhuhr')).toBeInTheDocument();
-      expect(screen.queryByText('1:16:03')).not.toBeInTheDocument();
+      expect(screen.queryByText('01:16:03')).not.toBeInTheDocument();
     });
 
     it('renders nothing when every section is switched off', () => {

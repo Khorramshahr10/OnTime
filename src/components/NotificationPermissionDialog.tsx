@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
@@ -7,7 +7,12 @@ import { AthanPlugin } from '../plugins/athanPlugin';
 
 const DISMISS_KEY_PREFIX = 'notif_perm_dismissed_v';
 
-export function NotificationPermissionDialog() {
+export function NotificationPermissionDialog({
+  onBackRef,
+}: {
+  /** Registers "Not now" as the Android back action while this is on screen. */
+  onBackRef?: MutableRefObject<(() => void) | null>;
+} = {}) {
   const { settings } = useSettings();
   const [needsExactAlarm, setNeedsExactAlarm] = useState(false);
   const [needsBatteryExemption, setNeedsBatteryExemption] = useState(false);
@@ -58,7 +63,7 @@ export function NotificationPermissionDialog() {
     return () => { listener.then(h => h.remove()); };
   }, [checkPermissions]);
 
-  const handleDismiss = async () => {
+  const handleDismiss = useCallback(async () => {
     try {
       const appInfo = await CapApp.getInfo();
       await Preferences.set({
@@ -69,9 +74,22 @@ export function NotificationPermissionDialog() {
       // ignore
     }
     setDismissed(true);
-  };
+  }, []);
 
-  if (!ready || dismissed || (!needsExactAlarm && !needsBatteryExemption)) {
+  const showing = ready && !dismissed && (needsExactAlarm || needsBatteryExemption);
+
+  // Registered while on screen so the Android back button dismisses this
+  // instead of minimising the app underneath it — it is z-[100], above every
+  // z-50 overlay, and so invisible to App's back state machine.
+  useEffect(() => {
+    if (!onBackRef) return;
+    if (showing) onBackRef.current = () => { void handleDismiss(); };
+    return () => {
+      if (onBackRef.current) onBackRef.current = null;
+    };
+  }, [onBackRef, showing, handleDismiss]);
+
+  if (!showing) {
     return null;
   }
 

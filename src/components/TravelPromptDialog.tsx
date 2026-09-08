@@ -1,16 +1,32 @@
+import { useEffect, type MutableRefObject } from 'react';
 import { useTravel } from '../context/TravelContext';
 import { useSettings } from '../context/SettingsContext';
 import { formatDistance } from '../utils/distance';
 
-export function TravelPromptDialog() {
+export function TravelPromptDialog({
+  onBackRef,
+}: {
+  /** Registers "Not now" as the Android back action while this is on screen. */
+  onBackRef?: MutableRefObject<(() => void) | null>;
+} = {}) {
   const { travelState, confirmTravel, dismissTravel } = useTravel();
   const { settings } = useSettings();
 
-  if (!travelState.travelPending || travelState.distanceFromHomeKm === null) {
+  const distanceKm = travelState.distanceFromHomeKm;
+  const showing = travelState.travelPending && distanceKm !== null;
+  useEffect(() => {
+    if (!onBackRef) return;
+    if (showing) onBackRef.current = dismissTravel;
+    return () => {
+      if (onBackRef.current === dismissTravel) onBackRef.current = null;
+    };
+  }, [onBackRef, showing, dismissTravel]);
+
+  if (!showing) {
     return null;
   }
 
-  const distanceText = formatDistance(travelState.distanceFromHomeKm, settings.distanceUnit);
+  const distanceText = formatDistance(distanceKm, settings.distanceUnit);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">

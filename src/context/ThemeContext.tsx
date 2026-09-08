@@ -111,11 +111,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.classList.add(effectiveTheme);
     }
 
-    // Update theme-color meta tag
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeColorMeta) {
-      const colors: Record<EffectiveTheme, string> = { light: '#FAFAFA', dark: '#0F0F0F', desert: '#1C1510', rose: '#160D14', forest: '#0C1510', ocean: '#0A1018' };
-      themeColorMeta.setAttribute('content', colors[effectiveTheme]);
+    // Update every theme-color meta tag. index.html declares two, media-scoped
+    // to prefers-color-scheme light and dark, so the browser applies whichever
+    // matches the OS preference — and querySelector always returned the light
+    // one. Under a dark OS preference the applied meta was therefore never
+    // written: dark browser chrome over a light app, and Desert/Rose/Forest/
+    // Ocean never tinting the chrome at all. Web-only; native drives the
+    // StatusBar plugin from the same palette in App.tsx.
+    const colors: Record<EffectiveTheme, string> = { light: '#FAFAFA', dark: '#0F0F0F', desert: '#1C1510', rose: '#160D14', forest: '#0C1510', ocean: '#0A1018' };
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+      meta.setAttribute('content', colors[effectiveTheme]);
     }
   }, [effectiveTheme]);
 

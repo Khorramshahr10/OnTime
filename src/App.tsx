@@ -41,6 +41,10 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
   const settingsBackRef = useRef<(() => void) | null>(null);
+  // The two z-[100] dialogs sit above every z-50 overlay, so back has to reach
+  // them first. Each registers its own dismiss here while it is on screen;
+  // without this, back minimised the app with the dialog still up.
+  const dialogBackRef = useRef<(() => void) | null>(null);
 
   const { prayers, currentPrayer, nextPrayer, nextPrayerTime, countdown } = usePrayerTimes();
   const { effectiveTheme, updatePrayerTimes } = useTheme();
@@ -61,7 +65,9 @@ function App() {
 
   // Handle Android back button / swipe gesture
   const handleBackButton = useCallback(() => {
-    if (settingsBackRef.current) {
+    if (dialogBackRef.current) {
+      dialogBackRef.current();
+    } else if (settingsBackRef.current) {
       settingsBackRef.current();
     } else if (isQiblaOpen) {
       setIsQiblaOpen(false);
@@ -415,8 +421,8 @@ function App() {
       <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[var(--color-background)]"><span className="text-[var(--color-muted)]">Loading…</span></div>}>
         <Dashboard isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
       </Suspense>
-      <TravelPromptDialog />
-      <NotificationPermissionDialog />
+      <TravelPromptDialog onBackRef={dialogBackRef} />
+      <NotificationPermissionDialog onBackRef={dialogBackRef} />
     </div>
   );
 }

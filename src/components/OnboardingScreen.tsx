@@ -233,7 +233,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             >
               <div className="text-lg font-semibold text-[var(--color-text)]">Globe</div>
               <div className="text-sm text-[var(--color-muted)] mt-0.5">
-                A full-page immersive view — stars, a live earth, and real cloud cover
+                A full-page immersive view — stars, a live earth, and the sun and moon where they really are
               </div>
             </button>
             <button

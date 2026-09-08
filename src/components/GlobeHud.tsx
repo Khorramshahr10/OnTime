@@ -67,6 +67,10 @@ export function GlobeHud({
     ? nextPrayerTime.getTime() - (hours * 3600 + minutes * 60 + seconds) * 1000
     : null;
   const isUrgent = hours === 0 && minutes < URGENT_WITHIN_MIN;
+  // Hours are padded like the minutes and seconds: unpadded, the 40px hero row
+  // reflows the moment the countdown crosses 10:00:00 into 9:59:59, and since
+  // 31061fc put the countdown next to the prayer name that jump moves the name
+  // too.
 
   const showNext = !!(display.showNextPrayer && nextLabel);
   // With the next prayer hidden the current one takes the hero slot, so the HUD
@@ -111,7 +115,7 @@ export function GlobeHud({
                   className="text-base tabular-nums"
                   style={{ fontFamily: CLOCK_FONT, color: isUrgent ? URGENT : MUTED, textShadow: SHADOW }}
                 >
-                  {hours}:{pad(minutes)}:{pad(seconds)}
+                  {pad(hours)}:{pad(minutes)}:{pad(seconds)}
                 </span>
               )}
             </div>
