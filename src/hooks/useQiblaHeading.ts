@@ -31,15 +31,22 @@ export function useQiblaHeading(enabled = true): QiblaHeadingState {
   const supported = Capacitor.isNativePlatform();
   const wasAligned = useRef(false);
 
+  // startListening's identity tracks the coordinates, so this restarts the
+  // compass when the user's location changes — which is the whole point.
+  // The deps used to be [supported, enabled] behind an eslint-disable and the
+  // comment "the hook re-reads location itself". That was half true: the
+  // *bearing* is re-derived every render, but nothing re-invoked
+  // startListening, so AthanPlugin.startCompass({latitude, longitude}) was
+  // never called again and the native magnetic declination stayed at whatever
+  // it was on the first start — a heading error of up to 10-20 degrees the
+  // moment any in-screen location switch exists.
   useEffect(() => {
     if (!supported || !enabled) return;
     startListening();
     return () => {
       stopListening();
     };
-    // Started once per open of the screen; the hook re-reads location itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supported, enabled]);
+  }, [supported, enabled, startListening, stopListening]);
 
   // Derived here rather than taken from the hook's `rotationAngle`: that value
   // is computed inside the sensor callback, which captured the bearing as it

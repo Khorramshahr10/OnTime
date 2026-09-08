@@ -5,6 +5,47 @@ import { AthanPlugin } from '../plugins/athanPlugin';
 import { calculateQiblaDirection } from '../services/prayerService';
 import { useLocation } from '../context/LocationContext';
 
+/**
+ * The native compass is a singleton: AthanPlugin.startCompass() registers the
+ * plugin object with SensorManager, and stopCompass() does a blanket
+ * unregisterListener(this). Two useQibla instances drive it — the qibla
+ * overlay's and the home globe's ground view — and closing the overlay hands
+ * the sensor from one to the other. Whichever order React happens to run the
+ * two effects in, the leaving consumer must not be able to kill the sensor the
+ * arriving one has just started, so the native calls are reference-counted
+ * here: start on 0 -> 1, stop on 1 -> 0.
+ *
+ * (Ground view is unreachable in the shipped build — the only button that sets
+ * groundMode is commented out — so this is a trap being closed rather than a
+ * live bug. Note the one thing the count changes: with two consumers alive, a
+ * restart for a new location never reaches 0, so the native declination would
+ * not refresh. Ground view and the overlay show the same place, so that costs
+ * nothing today.)
+ */
+let nativeCompassUsers = 0;
+
+async function acquireNativeCompass(latitude: number, longitude: number): Promise<void> {
+  nativeCompassUsers++;
+  if (nativeCompassUsers !== 1) return;
+  try {
+    await AthanPlugin.startCompass({ latitude, longitude });
+  } catch (err) {
+    // startCompass rejects when the sensor service is unavailable. Give the
+    // count back before rethrowing: left incremented, every later start would
+    // see "someone else already holds it", skip the native call, and turn a
+    // transient sensor failure into a compass that stays dead for the life of
+    // the process.
+    nativeCompassUsers--;
+    throw err;
+  }
+}
+
+function releaseNativeCompass(): void {
+  if (nativeCompassUsers === 0) return;
+  nativeCompassUsers--;
+  if (nativeCompassUsers === 0) AthanPlugin.stopCompass();
+}
+
 interface QiblaData {
   qiblaDirection: number; // Direction to Qibla from True North
   deviceHeading: number; // Current device heading (true north)
@@ -94,11 +135,18 @@ export function useQibla() {
         });
 
         // Pass user coordinates so native layer can compute magnetic declination
-        await AthanPlugin.startCompass({ latitude, longitude });
+        try {
+          await acquireNativeCompass(latitude, longitude);
+        } catch (err) {
+          // cleanupRef is not assigned yet, so this listener is the one thing
+          // nothing else can reach.
+          listener.remove();
+          throw err;
+        }
 
         cleanupRef.current = () => {
           listener.remove();
-          AthanPlugin.stopCompass();
+          releaseNativeCompass();
         };
       } else {
         // iOS: use Capacitor Motion plugin (webkitCompassHeading available)
@@ -160,17 +208,27 @@ export function useQibla() {
     teardown();
   }, [teardown]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount. This is the safety net for a consumer whose own effect
+  // has no cleanup function, so it has to cover the same race stopListening
+  // does.
   useEffect(() => {
     return () => {
       if (flushRafRef.current) {
         cancelAnimationFrame(flushRafRef.current);
         flushRafRef.current = 0;
       }
+      // Arm the guard the pending start checks before it activates. During
+      // `await AthanPlugin.addListener(...)` cleanupRef is still null, so
+      // clearing it below cannot reach a listener that does not exist yet:
+      // without this the start completed and registered with no owner left to
+      // tear it down. This is the residue of the C-2 fix, which covered
+      // stop-during-start but not unmount-during-start.
+      if (startingRef.current) stopRequestedRef.current = true;
       if (cleanupRef.current) {
         cleanupRef.current();
         cleanupRef.current = null;
       }
+      listeningRef.current = false;
     };
   }, []);
 
