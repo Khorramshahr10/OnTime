@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { Geolocation } from '@capacitor/geolocation';
 import { useLocation } from '../context/LocationContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTravel } from '../context/TravelContext';
@@ -18,10 +17,15 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const { addPreviousLocation, updateHomeView } = useSettings();
   const { setHomeBase } = useTravel();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Set once the user skips or moves past this step, so a refreshLocation()
+  // that was already in flight cannot land afterwards and quietly establish a
+  // travel home base the user just declined.
+  const locationAbandonedRef = useRef(false);
 
   // Cleanup timer on unmount
   useEffect(() => {
     return () => {
+      locationAbandonedRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
@@ -50,42 +54,47 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     }, 1000);
 
     try {
-      const perm = await Geolocation.checkPermissions();
-      if (perm.location !== 'granted') {
-        const result = await Geolocation.requestPermissions();
-        if (result.location === 'denied') {
-          if (timerRef.current) clearInterval(timerRef.current);
-          setLocationStatus('Location denied — you can set it manually in Settings.');
-          setTimeout(() => setStep('homeView'), 1500);
-          return;
-        }
-      }
+      // Permission handling lives in refreshLocation, which is also the only
+      // place that understands Android 12+'s "Approximate" grant. This screen
+      // used to gate on `location !== 'granted'` itself, and that alias reads
+      // denied unless *fine* accuracy is held too — so picking Approximate sent
+      // the user down the "Location denied" path even though a usable fix was
+      // already granted and prayer times only need city-level accuracy.
       setLocationStatus('Finding your location...');
       const loc = await refreshLocation();
       if (timerRef.current) clearInterval(timerRef.current);
-      if (loc) {
-        addPreviousLocation({
-          coordinates: loc.coordinates,
-          cityName: loc.cityName,
-          countryCode: loc.countryCode,
-          savedAt: new Date().toISOString(),
-        });
-        setHomeBase({
-          coordinates: loc.coordinates,
-          cityName: loc.cityName,
-          countryCode: loc.countryCode,
-        });
+      if (locationAbandonedRef.current) return;
+
+      if (!loc) {
+        setLocationStatus('Location unavailable — you can set it manually in Settings.');
+        setTimeout(() => setStep('homeView'), 1500);
+        return;
       }
+
+      addPreviousLocation({
+        coordinates: loc.coordinates,
+        cityName: loc.cityName,
+        countryCode: loc.countryCode,
+        savedAt: new Date().toISOString(),
+      });
+      setHomeBase({
+        coordinates: loc.coordinates,
+        cityName: loc.cityName,
+        countryCode: loc.countryCode,
+      });
       setLocationStatus('Location found!');
       setTimeout(() => setStep('homeView'), 600);
     } catch {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (locationAbandonedRef.current) return;
       setLocationStatus('Could not get location — you can set it in Settings.');
       setTimeout(() => setStep('homeView'), 1500);
     }
   }
 
   function skipLocation() {
+    // Stop a late-arriving fix from setting a home base the user opted out of.
+    locationAbandonedRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     setStep('homeView');
   }

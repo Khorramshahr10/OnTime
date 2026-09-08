@@ -18,6 +18,17 @@ function canLocate(status: { location?: string; coarseLocation?: string }): bool
   return status.location === 'granted' || status.coarseLocation === 'granted';
 }
 
+/** Shown for the moment between getting a GPS fix and learning its name. */
+const LOCATING_LABEL = 'Locating…';
+
+/**
+ * Nominatim gets no timeout of its own, and a bare fetch will wait as long as
+ * the platform feels like it. Five seconds is generous for a reverse geocode and
+ * short enough that a captive portal or a dead connection does not strand the
+ * location screen.
+ */
+const GEOCODE_TIMEOUT_MS = 5000;
+
 // Default to Mecca if no location is available
 const defaultLocation: LocationData = {
   coordinates: { latitude: 21.4225, longitude: 39.8262 },
@@ -106,7 +117,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         longitude: position.coords.longitude,
       };
 
-      // Reverse geocode to get city name
+      // Apply the fix immediately, then fill in the name. Reverse geocoding used
+      // to block this: a stalled Nominatim request — captive portal, congested
+      // mobile data — held perfectly good coordinates hostage, so onboarding sat
+      // on "Finding your location…" and prayer times stayed on the default city
+      // even though the position was already in hand.
+      const located: LocationData = { coordinates: coords, cityName: LOCATING_LABEL };
+      setLocation(located);
+      await saveLocation(located);
+
+      // Best-effort. reverseGeocode never throws — it times out and falls back to
+      // a generic label — so the coordinates above always stand.
       const { displayName, shortName, countryCode } = await reverseGeocode(coords);
 
       const newLocation: LocationData = {
@@ -130,15 +151,16 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   async function reverseGeocode(
     coords: Coordinates
   ): Promise<{ displayName: string; shortName?: string; countryCode?: string }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
     try {
-      // Using free Nominatim API for reverse geocoding
+      // Free Nominatim reverse geocoding. There is no User-Agent header: it is a
+      // forbidden header name in fetch, so the one that used to be set here was
+      // silently dropped and only looked like compliance with Nominatim's
+      // "identify your app" request.
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
-        {
-          headers: {
-            'User-Agent': 'OnTime Prayer App',
-          },
-        }
+        { signal: controller.signal }
       );
 
       if (response.ok) {
@@ -166,7 +188,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         return { displayName, shortName: city || undefined, countryCode };
       }
     } catch (err) {
-      console.error('Reverse geocoding failed:', err);
+      // Includes the abort from our own timeout, which on a bad connection is
+      // the ordinary case rather than anything alarming.
+      console.warn('Reverse geocoding failed:', err instanceof Error ? err.message : err);
+    } finally {
+      clearTimeout(timeout);
     }
 
     return { displayName: 'Current Location' };
