@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { render, act } from '@testing-library/react';
 import { AllProviders } from '../test/helpers';
 import { usePrayerTimes } from '../hooks/usePrayerTimes';
+import { getTimeUntil } from '../services/prayerService';
 
 /**
  * Regression guard for the prayer-boundary render storm.
@@ -18,6 +19,13 @@ import { usePrayerTimes } from '../hooks/usePrayerTimes';
  *
  * The refresh is now gated on the raw millisecond diff and the effect is keyed
  * on a primitive, so crossing a boundary recalculates exactly once.
+ *
+ * The per-second countdown has since moved out of usePrayerTimes into
+ * useCountdown (MH-8), and the hook now arms a timeout at the boundary with a
+ * five-second watchdog behind it rather than polling every second. So the
+ * probe reads the remaining time as a pure call instead of subscribing to the
+ * countdown: the render count then measures usePrayerTimes alone, which is the
+ * quantity the storm inflated.
  */
 interface Sample {
   nextMs: number | null;
@@ -31,7 +39,7 @@ function Probe({ onCommit }: { onCommit: (sample: Sample) => void }) {
   useEffect(() => {
     onCommit({
       nextMs: data.nextPrayerTime?.getTime() ?? null,
-      totalSeconds: data.countdown.totalSeconds,
+      totalSeconds: data.nextPrayerTime ? getTimeUntil(data.nextPrayerTime).totalSeconds : 0,
     });
   });
   return null;
@@ -95,16 +103,18 @@ describe('countdown behaviour across a prayer boundary (PM-1)', () => {
     vi.setSystemTime(new Date(target - 1500));
 
     // Phase 1: one tick lands at T-500ms. The target has not passed, so the
-    // hook must not recalculate — nextPrayerTime stays the same instant.
+    // hook must not recalculate. It no longer re-renders here at all — with
+    // the countdown moved out there is nothing left in this hook that ticks —
+    // so the strongest form of the old "fewer than ten renders" assertion is
+    // available: none.
     samples.length = 0;
     await tick(1000);
 
-    expect(samples.at(-1)!.nextMs).toBe(target);
-    expect(samples.length).toBeLessThan(10);
+    expect(samples).toHaveLength(0);
 
     // Phase 2: cross the boundary. Exactly one recalculation, to the next prayer.
     samples.length = 0;
-    await tick(2000);
+    await tick(6000);
 
     expect(samples.length).toBeLessThan(25);
     expect(samples.at(-1)!.nextMs!).toBeGreaterThan(target);
@@ -121,7 +131,7 @@ describe('countdown behaviour across a prayer boundary (PM-1)', () => {
 
     vi.setSystemTime(new Date(target + 100));
     samples.length = 0;
-    await tick(1000);
+    await tick(6000);
 
     expect(samples.at(-1)!.totalSeconds).toBeGreaterThan(0);
     expect(samples.at(-1)!.nextMs!).toBeGreaterThan(target);

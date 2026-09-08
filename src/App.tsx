@@ -10,10 +10,8 @@ import { useTravel } from './context/TravelContext';
 import { useSettings } from './context/SettingsContext';
 import { formatDistance } from './utils/distance';
 import { PrayerTable } from './components/PrayerTable';
-import { CountdownTimer } from './components/CountdownTimer';
-import { GlobeHud } from './components/GlobeHud';
 import { IslamicPrayerTable } from './components/IslamicPrayerTable';
-import { IslamicCountdownTimer } from './components/IslamicCountdownTimer';
+import { PrayerCountdownPanel } from './components/PrayerCountdownPanel';
 import { GirihBackground } from './components/IslamicPatterns';
 import { LocationDisplay } from './components/LocationDisplay';
 // Today's Sky is commented out below; keep the import alongside it.
@@ -46,7 +44,7 @@ function App() {
   // without this, back minimised the app with the dialog still up.
   const dialogBackRef = useRef<(() => void) | null>(null);
 
-  const { prayers, currentPrayer, nextPrayer, nextPrayerTime, countdown } = usePrayerTimes();
+  const { prayers, currentPrayer, nextPrayer, nextPrayerTime } = usePrayerTimes();
   const { effectiveTheme, updatePrayerTimes } = useTheme();
   const { travelState } = useTravel();
   const { settings, updateHomeView } = useSettings();
@@ -333,46 +331,15 @@ function App() {
           <div className="mb-5">
             {/* Over the globe the prayer info is one condensed unit rather than
                 the list view's three cards — see GlobeHud. */}
-            {isGlobeHome ? (
-              <GlobeHud
-                currentPrayer={currentPrayer}
-                currentPrayerTime={currentPrayer ? prayers.find(p => p.name === currentPrayer)?.time ?? null : null}
-                nextPrayer={nextPrayer}
-                nextPrayerTime={nextPrayerTime}
-                hours={countdown.hours}
-                minutes={countdown.minutes}
-                seconds={countdown.seconds}
-                isTraveling={travelState.isTraveling}
-                travelState={travelState}
-                display={settings.display}
-              />
-            ) : isIslamic ? (
-              <IslamicCountdownTimer
-                currentPrayer={currentPrayer}
-                currentPrayerTime={currentPrayer ? prayers.find(p => p.name === currentPrayer)?.time ?? null : null}
-                nextPrayer={nextPrayer}
-                nextPrayerTime={nextPrayerTime}
-                hours={countdown.hours}
-                minutes={countdown.minutes}
-                seconds={countdown.seconds}
-                isTraveling={travelState.isTraveling}
-                travelState={travelState}
-                display={settings.display}
-              />
-            ) : (
-              <CountdownTimer
-                currentPrayer={currentPrayer}
-                currentPrayerTime={currentPrayer ? prayers.find(p => p.name === currentPrayer)?.time ?? null : null}
-                nextPrayer={nextPrayer}
-                nextPrayerTime={nextPrayerTime}
-                hours={countdown.hours}
-                minutes={countdown.minutes}
-                seconds={countdown.seconds}
-                isTraveling={travelState.isTraveling}
-                travelState={travelState}
-                display={settings.display}
-              />
-            )}
+            <PrayerCountdownPanel
+              prayers={prayers}
+              currentPrayer={currentPrayer}
+              nextPrayer={nextPrayer}
+              nextPrayerTime={nextPrayerTime}
+              travelState={travelState}
+              display={settings.display}
+              variant={isGlobeHome ? 'globe' : isIslamic ? 'islamic' : 'classic'}
+            />
           </div>
         )}
 

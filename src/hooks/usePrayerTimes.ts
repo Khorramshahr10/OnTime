@@ -1,15 +1,20 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { calculatePrayerTimes, getTimeUntil } from '../services/prayerService';
+import { calculatePrayerTimes } from '../services/prayerService';
 import { useSettings } from '../context/SettingsContext';
 import { useLocation } from '../context/LocationContext';
 import { useLocalTimeKey } from './useLocalTimeKey';
 import type { PrayerTimesData } from '../types';
 
+// setTimeout's delay is a 32-bit signed int; anything longer fires immediately.
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+// How often to re-check that the boundary has not passed behind the timeout's
+// back — after a sleep, a background spell, or a clock correction.
+const BOUNDARY_WATCHDOG_MS = 5000;
+
 export function usePrayerTimes() {
   const { settings } = useSettings();
   const { location } = useLocation();
   const [date, setDate] = useState(new Date());
-  const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const localTimeKey = useLocalTimeKey();
 
   // Recalculate prayer times when settings, location, or date change
@@ -50,36 +55,59 @@ export function usePrayerTimes() {
   const nextPrayerTimeMs = prayerData.nextPrayerTime?.getTime() ?? null;
 
   // Which passed target we have already recalculated for, so a target that
-  // fails to advance can't spin this effect once per second forever.
+  // fails to advance can't spin this effect forever.
   const refreshedForMs = useRef<number | null>(null);
 
-  // Update countdown every second
+  // Recalculate when the next prayer actually arrives.
+  //
+  // This used to be a once-a-second interval that also drove a countdown, and
+  // that per-second state is why App — and everything under it — re-rendered
+  // every second. The countdown moved to useCountdown, next to the components
+  // that show it, leaving this hook with the one thing it genuinely has to do:
+  // notice the boundary. A single timeout armed at the instant itself is both
+  // exact and free.
+  //
+  // The +250ms matters: setTimeout can fire a hair early, and recalculating
+  // while the target is still (just) ahead rebuilds the same instant as a new
+  // Date, which re-runs this effect. That is the shape of the render storm
+  // PM-1 fixed, so the guard below stays too.
+  //
+  // The watchdog is there because a timeout alone trusts elapsed time, and a
+  // phone does not: it sleeps, it is backgrounded, its clock is corrected. The
+  // old per-second poll noticed any of that within a second. This checks the
+  // same condition, five seconds apart, and — unlike the poll — sets no state
+  // unless the boundary has genuinely passed, so App still re-renders only at
+  // boundaries.
   useEffect(() => {
     if (nextPrayerTimeMs === null) return;
 
-    const updateCountdown = () => {
-      setCountdown(getTimeUntil(new Date(nextPrayerTimeMs)));
-
-      // Recalculate only once the target has genuinely passed. getTimeUntil
-      // floors to whole seconds, so its totalSeconds reads 0 for the entire
-      // final second while the target is still ahead — refreshing on that
-      // rebuilt the same instant with a new Date identity, re-ran this effect,
-      // and spun until the wall clock crossed the prayer time.
-      if (nextPrayerTimeMs - Date.now() <= 0 && refreshedForMs.current !== nextPrayerTimeMs) {
-        refreshedForMs.current = nextPrayerTimeMs;
-        setDate(new Date());
-      }
+    const refresh = () => {
+      if (refreshedForMs.current === nextPrayerTimeMs) return;
+      refreshedForMs.current = nextPrayerTimeMs;
+      setDate(new Date());
     };
 
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    const remaining = nextPrayerTimeMs - Date.now();
+    if (remaining <= 0) {
+      // Already passed — a stale target from a resume or a settings change.
+      const immediate = setTimeout(refresh, 0);
+      return () => clearTimeout(immediate);
+    }
 
-    return () => clearInterval(interval);
+    // setTimeout's delay is a 32-bit signed int; a longer one fires at once.
+    const timer = setTimeout(refresh, Math.min(remaining + 250, MAX_TIMEOUT_MS));
+    const watchdog = setInterval(() => {
+      if (nextPrayerTimeMs - Date.now() <= 0) refresh();
+    }, BOUNDARY_WATCHDOG_MS);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(watchdog);
+    };
   }, [nextPrayerTimeMs]);
 
   return {
     ...prayerData,
-    countdown,
     date,
   };
 }
