@@ -58,11 +58,13 @@ The app's own channels are `IMPORTANCE_HIGH`. The plugin's default channel was `
 - [ ] **Expected:** a heads-up banner drops down, not just a silent entry in the shade
 - [ ] Decide whether you want this. If a heads-up at every prayer is too aggressive, drop `importance` from `4` to `3` in `BUILT_IN_SOUNDS` in `src/services/notificationService.ts`
 
-### 4. Default and Adhan sound different when an athan is selected
+### 4. Default, Adhan and Silent are three different sounds
 
-- [ ] With a downloaded athan selected, set two prayers to **Default** and **Adhan**
-- [ ] **Expected:** Default plays the system tone, Adhan plays your athan
-- [ ] Note: with **no** athan downloaded, Adhan and Default sound the same — that is intended, there is no bundled recording to fall back to (see "Still open" below)
+- [ ] With **nothing downloaded**, set three prayers to **Default**, **Adhan** and **Silent**
+- [ ] **Expected:** Default plays the system tone, Adhan plays the bundled Adhan Makkah recording, Silent plays nothing
+- [ ] Then download an athan and select it, and set a prayer to **Adhan**
+- [ ] **Expected:** it now plays your downloaded athan, not the bundled one — the downloaded athan wins
+- [ ] **Fajr Adhan** has no bundled recording yet, so with nothing downloaded it behaves like Default. That is expected; see below
 
 ### 5. Switching athans does not kill notifications
 
@@ -89,22 +91,18 @@ Downloads are now validated before being written.
 
 ---
 
-## Still open — needs your input
+## Bundled audio — current state
 
-**There is no bundled adhan audio.** `android/app/src/main/res/raw/` is empty, and I did not add anything to it. The four MP3s in `athan-audio/` at the repo root are untracked and I can't tell where they came from, so I was not willing to commit audio into a shipped app without knowing it is cleared for redistribution.
+`android/app/src/main/res/raw/adhan.mp3` now ships (Adhan Makkah, ~3 min 21 s), so the **Adhan** option plays a real recording with nothing downloaded. Verified as far as a desktop can: `processDebugResources` accepts it and registers `int raw adhan`, so `android.resource://com.ontimeapp.prayer/raw/adhan` resolves.
 
-Until then:
+**Fajr Adhan is still not bundled**, deliberately. None of the four available recordings is a Fajr adhan — none contains *aṣ-ṣalātu khayrun minan-nawm* — and labelling a general adhan "Fajr Adhan" would repeat the promise the "(Built-in)" suffix was removed for. Until issue #17 is settled it routes to the user's downloaded Fajr athan if they have one, and to the default channel otherwise. Note Fajr **defaults** to this option, so every fresh install is affected.
 
-- **Silent** works, with no audio file needed.
-- **Adhan** and **Fajr Adhan** route to your downloaded athan if you have one, and to the system default if you don't.
-- The picker labels no longer say "(Built-in)", because nothing is built in.
+To bundle one later: drop `adhan_fajr.mp3` into `res/raw`, flip `ships` for that entry in `BUILT_IN_SOUNDS` (`src/services/notificationService.ts`), and update the assertion in `notification-sound-channels.test.ts` that says no channel is created for it.
 
-The mechanism is fully wired and waiting. To ship a bundled adhan:
+Two things worth listening for on device:
 
-1. Put the recordings at `android/app/src/main/res/raw/adhan.mp3` and `adhan_fajr.mp3` — lowercase, no spaces or dashes, the extension can be `.mp3` or `.wav`.
-2. Flip `ships: false` to `ships: true` for `adhan` and `adhan_fajr` in `BUILT_IN_SOUNDS` in `src/services/notificationService.ts`.
-3. Re-run check 4 above — with no athan downloaded, Adhan should now play the bundled recording instead of the system tone.
+- All four source recordings are **~8 kbps**, which is low enough to sound thin at alarm volume — especially next to a downloaded athan. Worth hearing before release.
+- A 3.5-minute notification sound is unusual, though the downloaded-athan feature already behaves this way, so it is at least consistent.
 
-The `ships` flag exists because a channel pointing at a missing `res/raw` resource falls back silently, which is the exact bug this batch was fixing. The unit tests assert that no channel is created for a sound marked `ships: false`, so flipping the flag without adding the file will fail the suite.
+Swapping which recording is bundled is a one-file change: replace `res/raw/adhan.mp3`. The other candidates are Abdul-Basit, Adhan-Alaqsa and Naghshbandi in `athan-audio/`.
 
-If you would rather not bundle audio at all, the alternative is to drop the Adhan and Fajr Adhan options from `BUILT_IN_SOUND_OPTIONS` in `src/components/SettingsModal.tsx` and let the Athan Sounds page be the only way to get an adhan — but note Fajr currently *defaults* to `adhan_fajr`, so that would need a defaults change too.

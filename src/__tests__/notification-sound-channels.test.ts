@@ -91,10 +91,15 @@ describe('built-in notification sound channels', () => {
     expect(silent?.importance).toBe(2);
     expect(silent?.sound).toBeUndefined();
 
-    // No channel for a sound whose audio is not bundled: pointing one at a
+    // The bundled adhan gets a channel now that res/raw/adhan.mp3 ships, and it
+    // has to name that file — the plugin strips the extension and resolves the
+    // resource by name.
+    expect(ids).toContain('ontime_prayer_adhan');
+    expect(created.find((c) => c.id === 'ontime_prayer_adhan')?.sound).toBe('adhan.mp3');
+
+    // No channel for a sound whose audio is NOT bundled: pointing one at a
     // missing res/raw resource falls back silently, which is exactly the
     // failure this is meant to prevent.
-    expect(ids).not.toContain('ontime_prayer_adhan');
     expect(ids).not.toContain('ontime_prayer_adhan_fajr');
   });
 

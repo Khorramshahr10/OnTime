@@ -62,13 +62,13 @@ const PRAYER_MESSAGES: Record<PrayerName, { reminder: string; atTime: string }> 
  * sound also cannot be changed after creation, so bundling the missing audio
  * alone would not have fixed it.
  *
- * `ships` records whether the audio is actually in
+ * `ships` records whether the audio is actually bundled in
  * `android/app/src/main/res/raw`. A channel pointing at a missing resource falls
  * back silently, which is how the two adhan options came to be indistinguishable
- * from Default — so while no recording cleared for redistribution is bundled,
- * they route to the user's downloaded athan if one is selected and to the
- * default channel otherwise, and no channel is created for them. Add the file to
- * res/raw and flip `ships` to make the bundled adhan live.
+ * from Default — so no channel is created for one that is not bundled, and it
+ * routes to the user's downloaded athan if one is selected and to the default
+ * channel otherwise. Adding a file to res/raw and flipping its flag is all it
+ * takes to make that option live.
  *
  * Importance 4 (HIGH) gives audible options a heads-up; the plugin's own default
  * channel is 3, which never shows one — wrong for a prayer notification.
@@ -84,7 +84,12 @@ const BUILT_IN_SOUNDS: Record<string, {
 }> = {
   default: { channelId: 'ontime_prayer', channelName: 'Prayer times', importance: 4, ships: true },
   silent: { channelId: 'ontime_prayer_silent', channelName: 'Prayer times (silent)', importance: 2, ships: true },
-  adhan: { file: 'adhan.wav', channelId: 'ontime_prayer_adhan', channelName: 'Prayer times (Adhan)', importance: 4, ships: false },
+  adhan: { file: 'adhan.mp3', channelId: 'ontime_prayer_adhan', channelName: 'Prayer times (Adhan)', importance: 4, ships: true },
+  // Not bundled: none of the available recordings is a Fajr adhan (with
+  // aṣ-ṣalātu khayrun minan-nawm), and labelling a general one "Fajr Adhan"
+  // would repeat the promise the "(Built-in)" suffix was just removed for.
+  // Tracked in issue #17. Until then this routes to the user's downloaded Fajr
+  // athan if they have one, and to the default channel otherwise.
   adhan_fajr: { file: 'adhan_fajr.wav', channelId: 'ontime_prayer_adhan_fajr', channelName: 'Prayer times (Adhan Fajr)', importance: 4, ships: false },
 };
 
