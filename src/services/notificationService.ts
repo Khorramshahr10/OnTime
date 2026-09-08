@@ -32,6 +32,19 @@ const PRAYER_BASE_IDS: Record<PrayerName, number> = {
 
 // Jumuah notification IDs (1000–1099 range)
 const JUMUAH_BASE_ID = 1000;
+/**
+ * Ids per scheduled week, and so the hard ceiling on jamaats per Friday.
+ * WEEKS_TO_SCHEDULE_JUMUAH * JUMUAH_WEEK_STRIDE must stay within the 100-wide
+ * block cancelJumuahNotifications() sweeps.
+ *
+ * This used to be 10 against an unbounded time index, so twelve jamaats
+ * produced the duplicate ids [1010,1011,1020,1021,1030,1031] — and a
+ * duplicate id inside one schedule() call means the later entry silently
+ * replaces the earlier. The "+ Add Another" button appends unconditionally,
+ * so it was UI-reachable rather than theoretical.
+ */
+const JUMUAH_WEEK_STRIDE = 25;
+export const MAX_JUMUAH_TIMES = JUMUAH_WEEK_STRIDE;
 
 // Offset for at-time notifications (reminder = base, at-time = base + 1)
 const AT_TIME_OFFSET = 1;
@@ -229,9 +242,23 @@ const CATEGORY_RANGES: Record<NotificationCategory, [number, number]> = {
   reminder: [1200, 1299],
 };
 
+/**
+ * Exactly the settings a prayer schedule is built from — nothing else in
+ * Settings changes what gets scheduled.
+ *
+ * Narrowed rather than taking the whole object so the compiler, not a comment,
+ * keeps useNotifications' dependency list honest: depending on all of
+ * `settings` meant a theme change or a distance-unit change rebuilt all ~80
+ * alarms.
+ */
+export type PrayerScheduleSettings = Pick<
+  Settings,
+  'notifications' | 'athan' | 'calculationMethod' | 'asrCalculation'
+>;
+
 export async function scheduleNotifications(
   coordinates: Coordinates,
-  settings: Settings
+  settings: PrayerScheduleSettings
 ): Promise<void> {
   if (!settings.notifications.enabled) {
     await cancelAllNotifications();
@@ -292,8 +319,7 @@ export async function scheduleNotifications(
             sound: sound || 'default',
             channelId,
             smallIcon: 'ic_stat_icon',
-            largeIcon: 'ic_launcher',
-          });
+              });
         }
       }
 
@@ -312,8 +338,7 @@ export async function scheduleNotifications(
           sound: sound || 'default',
           channelId,
           smallIcon: 'ic_stat_icon',
-          largeIcon: 'ic_launcher',
-        });
+          });
       }
     }
   }
@@ -441,7 +466,7 @@ export async function scheduleJumuahNotifications(
     nextFriday.setDate(now.getDate() + daysUntilFriday + (weekOffset * 7));
 
     // Schedule notification for each Jumuah time
-    jumuahSettings.times.forEach((time, timeIndex) => {
+    jumuahSettings.times.slice(0, MAX_JUMUAH_TIMES).forEach((time, timeIndex) => {
       const [khutbahHour, khutbahMinute] = time.khutbah.split(':').map(Number);
       
       // Create khutbah time, then subtract reminder minutes using proper date arithmetic
@@ -451,7 +476,7 @@ export async function scheduleJumuahNotifications(
 
       // Only schedule if in the future
       if (reminderTime > now) {
-        const notificationId = JUMUAH_BASE_ID + (weekOffset * 10) + timeIndex;
+        const notificationId = JUMUAH_BASE_ID + (weekOffset * JUMUAH_WEEK_STRIDE) + timeIndex;
         
         const masjidText = jumuahSettings.masjidName 
           ? ` at ${jumuahSettings.masjidName}` 
@@ -467,8 +492,7 @@ export async function scheduleJumuahNotifications(
           },
           sound: 'default',
           smallIcon: 'ic_stat_icon',
-          largeIcon: 'ic_launcher',
-        });
+          });
       }
     });
   }
@@ -485,6 +509,20 @@ export async function scheduleJumuahNotifications(
 
 // Surah Kahf notification IDs (1100–1199 range)
 const SURAH_KAHF_BASE_ID = 1100;
+/**
+ * Ids per scheduled week: one for the Thursday-Maghrib opener plus up to
+ * MAX_KAHF_REMINDERS repeats. WEEKS_TO_SCHEDULE_KAHF * KAHF_WEEK_STRIDE has to
+ * stay inside the 100-wide block cancelSurahKahfNotifications() sweeps.
+ *
+ * The stride used to be 10, which forced the repeat loop to stop after eight
+ * reminders. At the finest interval the app offers (2h) that covered 16h of a
+ * ~24h window — the last reminder landing around 11:37 against a ~19:15
+ * Maghrib, leaving the whole of Friday afternoon uncovered, which is exactly
+ * when "have you read Surah Al-Kahf today?" is worth asking. 25 covers a full
+ * 24h window at 2h intervals with room to spare.
+ */
+const KAHF_WEEK_STRIDE = 25;
+const MAX_KAHF_REMINDERS = KAHF_WEEK_STRIDE - 1;
 
 // Weeks ahead to schedule Surah Kahf notifications
 const WEEKS_TO_SCHEDULE_KAHF = 4;
@@ -551,7 +589,7 @@ export async function scheduleSurahKahfNotifications(
     // First notification: Thursday Maghrib
     if (maghribTime > now) {
       notifications.push({
-        id: SURAH_KAHF_BASE_ID + (weekOffset * 10),
+        id: SURAH_KAHF_BASE_ID + (weekOffset * KAHF_WEEK_STRIDE),
         title: 'Surah Al-Kahf',
         body: "Jumu'ah has begun! Don't forget to read Surah Al-Kahf",
         schedule: {
@@ -560,7 +598,6 @@ export async function scheduleSurahKahfNotifications(
         },
         sound: 'default',
         smallIcon: 'ic_stat_icon',
-        largeIcon: 'ic_launcher',
       });
     }
 
@@ -570,10 +607,10 @@ export async function scheduleSurahKahfNotifications(
       let reminderTime = new Date(maghribTime.getTime() + intervalMs);
       let reminderIndex = 1;
 
-      while (reminderTime < endTime && reminderIndex < 9) {
+      while (reminderTime < endTime && reminderIndex <= MAX_KAHF_REMINDERS) {
         if (reminderTime > now) {
           notifications.push({
-            id: SURAH_KAHF_BASE_ID + (weekOffset * 10) + reminderIndex,
+            id: SURAH_KAHF_BASE_ID + (weekOffset * KAHF_WEEK_STRIDE) + reminderIndex,
             title: 'Surah Al-Kahf Reminder',
             body: 'Have you read Surah Al-Kahf today?',
             schedule: {
@@ -582,8 +619,7 @@ export async function scheduleSurahKahfNotifications(
             },
             sound: 'default',
             smallIcon: 'ic_stat_icon',
-            largeIcon: 'ic_launcher',
-          });
+              });
         }
         reminderTime = new Date(reminderTime.getTime() + intervalMs);
         reminderIndex++;

@@ -155,6 +155,29 @@ describe('User story: I get reminded about Jumuah prayer', () => {
     });
     expect(scheduledNotifications.length).toBe(0);
   });
+
+  it('gives every Jumuah time its own id, even at more times than the UI offers', async () => {
+    // NT-13: id = JUMUAH_BASE_ID + weekOffset * 10 + timeIndex, with an
+    // unbounded timeIndex against a 10-wide week stride. With 12 times the
+    // duplicates are [1010,1011,1020,1021,1030,1031], and a duplicate id
+    // inside one schedule() call means the later entry silently replaces the
+    // earlier — so a masjid with many jamaats loses notifications with no
+    // sign that anything went wrong.
+    const times = Array.from({ length: 30 }, (_, i) => ({
+      khutbah: `${String(12 + Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`,
+      iqamah: '14:30',
+    }));
+    await scheduleJumuahNotifications({ enabled: true, masjidName: '', times, reminderMinutes: 30 });
+
+    const ids = scheduledNotifications.map((n) => (n as { id: number }).id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    // And they all stay inside the range cancelJumuahNotifications sweeps.
+    for (const id of ids) {
+      expect(id).toBeGreaterThanOrEqual(1000);
+      expect(id).toBeLessThan(1100);
+    }
+  });
 });
 
 describe('User story: I get reminded to read Surah Al-Kahf', () => {
@@ -187,5 +210,55 @@ describe('User story: I get reminded to read Surah Al-Kahf', () => {
   it('schedules repeat reminders when repeatIntervalHours > 0', async () => {
     await scheduleSurahKahfNotifications(TORONTO, { enabled: true, repeatIntervalHours: 4 }, 'NorthAmerica', 'Standard');
     expect(scheduledNotifications.length).toBeGreaterThan(4);
+  });
+
+  it('keeps reminding right up to Friday Maghrib at the finest interval', async () => {
+    // NT-12: the loop was capped at `reminderIndex < 9` to keep ids inside a
+    // 10-wide week block, so at 2h intervals the reminders covered 16h of a
+    // ~24h window — the last one landing around 11:37 against a ~19:15
+    // Maghrib, leaving Friday afternoon uncovered. Which is when the reminder
+    // matters most.
+    await scheduleSurahKahfNotifications(TORONTO, { enabled: true, repeatIntervalHours: 2 }, 'NorthAmerica', 'Standard');
+
+    // Group by burst rather than by id, so the assertion says nothing about
+    // how the ids happen to be laid out. Reminders inside one Islamic Friday
+    // are 2h apart; consecutive weeks are ~7 days apart.
+    const times = (scheduledNotifications as Array<{ schedule: { at: Date } }>)
+      .map((n) => n.schedule.at.getTime())
+      .sort((a, b) => a - b);
+    const bursts: number[][] = [];
+    for (const t of times) {
+      const last = bursts[bursts.length - 1];
+      if (last && t - last[last.length - 1] < 12 * 3_600_000) last.push(t);
+      else bursts.push([t]);
+    }
+
+    // Skip the first burst: today may already be part-way through the window.
+    const full = bursts.slice(1).find((b) => b.length > 1);
+    expect(full).toBeDefined();
+    const spanHours = (full![full!.length - 1] - full![0]) / 3_600_000;
+    // Thursday Maghrib to Friday Maghrib is ~24h; the last reminder has to sit
+    // within one interval of the end rather than eight hours short of it.
+    expect(spanHours).toBeGreaterThan(21);
+
+    const ids = scheduledNotifications.map((n) => (n as { id: number }).id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id).toBeGreaterThanOrEqual(1100);
+      expect(id).toBeLessThan(1200);
+    }
+  });
+
+  it('never puts a large icon on a notification that cannot resolve one', async () => {
+    // NT-15: largeIcon: 'ic_launcher' resolves against res/drawable, and
+    // ic_launcher.png only exists under mipmap-*. resId 0 ->
+    // decodeResource(res, 0) -> null, so every notification lost its large
+    // icon anyway. smallIcon 'ic_stat_icon' is fine — that one is in
+    // drawable-*.
+    await scheduleSurahKahfNotifications(TORONTO, { enabled: true, repeatIntervalHours: 4 }, 'NorthAmerica', 'Standard');
+    for (const n of scheduledNotifications as Array<Record<string, unknown>>) {
+      expect(n.largeIcon).toBeUndefined();
+      expect(n.smallIcon).toBe('ic_stat_icon');
+    }
   });
 });

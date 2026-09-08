@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useLocation } from '../context/LocationContext';
 import { useTravel } from '../context/TravelContext';
 import { CALCULATION_METHODS } from '../services/prayerService';
+import { MAX_JUMUAH_TIMES } from '../services/notificationService';
 import { CitySearch } from './CitySearch';
 import {
   fetchAthanCatalog,
@@ -869,16 +870,21 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                   </div>
                 ))}
 
-                {/* Add Another Jumuah */}
-                <button
-                  onClick={() => {
-                    const newTimes = [...settings.jumuah.times, { khutbah: '14:00', iqamah: '14:30' }];
-                    updateJumuah({ times: newTimes });
-                  }}
-                  className="p-4 rounded-lg bg-[var(--color-card)] text-[var(--color-primary)] font-medium hover:bg-[var(--color-border)] transition-colors text-center"
-                >
-                  + Add Another Jumu'ah Time
-                </button>
+                {/* Add Another Jumuah. Capped at the notification scheduler's
+                    per-week id stride: past that, two jamaats would be handed
+                    the same notification id and one would silently replace the
+                    other. */}
+                {settings.jumuah.times.length < MAX_JUMUAH_TIMES && (
+                  <button
+                    onClick={() => {
+                      const newTimes = [...settings.jumuah.times, { khutbah: '14:00', iqamah: '14:30' }];
+                      updateJumuah({ times: newTimes });
+                    }}
+                    className="p-4 rounded-lg bg-[var(--color-card)] text-[var(--color-primary)] font-medium hover:bg-[var(--color-border)] transition-colors text-center"
+                  >
+                    + Add Another Jumu'ah Time
+                  </button>
+                )}
 
                 {/* Reminder Time */}
                 <div className="p-4 rounded-lg bg-[var(--color-card)]">

@@ -11,10 +11,30 @@ export function useNotifications(enabled = true) {
   const { location } = useLocation();
   const masterEnabled = enabled && settings.notifications.enabled;
 
-  // Schedule prayer notifications whenever location or settings change
+  // Schedule prayer notifications whenever location or the settings that
+  // actually shape the schedule change.
+  //
+  // This used to depend on the whole `settings` object, and SettingsContext
+  // hands back a fresh object on every update — so changing the theme, the
+  // distance unit, the design style, the home view, or adding a previous
+  // location each tore down and rebuilt all ~80 prayer alarms and re-ran a
+  // permission check. Toggling two unrelated switches in a second cost two
+  // full cancel/rebuild cycles. scheduleNotifications reads exactly these four
+  // fields; keep this list in step with it.
+  const {
+    notifications: notificationSettings,
+    athan: athanSettings,
+    calculationMethod,
+    asrCalculation,
+  } = settings;
   const reschedule = useCallback(async () => {
-    await scheduleNotifications(location.coordinates, settings);
-  }, [location.coordinates, settings]);
+    await scheduleNotifications(location.coordinates, {
+      notifications: notificationSettings,
+      athan: athanSettings,
+      calculationMethod,
+      asrCalculation,
+    });
+  }, [location.coordinates, notificationSettings, athanSettings, calculationMethod, asrCalculation]);
 
   // The latest reschedule, without making the exact-alarm watcher below depend
   // on it: `reschedule` changes identity on every settings edit, and re-running
