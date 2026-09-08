@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { CityEntry } from '../types';
+import { buildCityIndex, searchCities } from '../utils/citySearch';
 
 interface CitySearchProps {
   onSelect: (city: CityEntry) => void;
@@ -14,14 +15,6 @@ const POPULAR_CITY_NAMES = [
   'New York City', 'Toronto', 'Paris', 'Berlin', 'Sydney',
 ];
 
-// Common English spellings that don't appear in the dataset verbatim.
-const QUERY_ALIASES: Record<string, string> = {
-  mecca: 'makkah',
-  medina: 'madinah',
-  'new york': 'new york city',
-};
-
-const MAX_RESULTS = 20;
 const DEBOUNCE_MS = 150;
 
 export function CitySearch({ onSelect }: CitySearchProps) {
@@ -58,9 +51,13 @@ export function CitySearch({ onSelect }: CitySearchProps) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // Folded once when the dataset arrives rather than on every keystroke: the
+  // data never changes, the query does.
+  const index = useMemo(() => (cities ? buildCityIndex(cities) : null), [cities]);
+
   // Filter and sort results
   const results = useMemo(() => {
-    if (!cities) return [];
+    if (!cities || !index) return [];
 
     if (!debouncedQuery) {
       // Show popular cities
@@ -72,25 +69,8 @@ export function CitySearch({ onSelect }: CitySearchProps) {
       return popular;
     }
 
-    const q = (QUERY_ALIASES[debouncedQuery.toLowerCase()] ?? debouncedQuery).toLowerCase();
-    const startsWith: CityEntry[] = [];
-    const contains: CityEntry[] = [];
-
-    for (const city of cities) {
-      const nameLower = city.n.toLowerCase();
-      if (nameLower.startsWith(q)) {
-        startsWith.push(city);
-      } else if (nameLower.includes(q)) {
-        contains.push(city);
-      }
-      // Early exit once we have plenty of matches
-      if (startsWith.length + contains.length >= 100) break;
-    }
-
-    // startsWith first (already sorted by population since cities array is sorted),
-    // then contains matches
-    return [...startsWith, ...contains].slice(0, MAX_RESULTS);
-  }, [cities, debouncedQuery]);
+    return searchCities(index, debouncedQuery);
+  }, [cities, index, debouncedQuery]);
 
   const getCountryName = (code: string) => countries?.[code] || code;
 
