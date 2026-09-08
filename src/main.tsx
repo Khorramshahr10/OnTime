@@ -5,6 +5,8 @@ import { SettingsProvider } from './context/SettingsContext';
 import { LocationProvider } from './context/LocationContext';
 import { TravelProvider } from './context/TravelContext';
 import App from './App';
+// Self-hosted webfonts. Generated — see scripts/generate-fonts-css.cjs.
+import './fonts.css';
 import './index.css';
 
 // Cache the globe's satellite tiles on disk (download once, then local).
