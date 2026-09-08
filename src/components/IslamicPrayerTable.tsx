@@ -68,6 +68,31 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
   const sunnahPrayers = getSunnahPrayers(travelState.isTraveling);
   const isFriday = new Date().getDay() === 5;
   const jumuahEnabled = isFriday && settings.jumuah.enabled && settings.jumuah.times.length > 0;
+  // Today's khutbah as an instant. Both Friday branches below need it: the
+  // Jama' one substituted only the *label*, keeping prayer.time, so a
+  // travelling user on a Friday saw "Jumuah + Asr - 12:24" against a 13:00
+  // khutbah — contradicting the same screen's non-travelling rendering, and
+  // opening the tracking prompt at Asr rather than at the khutbah.
+  const khutbahTime = (() => {
+    if (!jumuahEnabled) return null;
+    const [hh, mm] = settings.jumuah.times[0].khutbah.split(':').map(Number);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  })();
+
+  // isPassed is computed from `new Date()` at render time, and the boundaries
+  // that re-render this table are the core prayer times — so a row measured
+  // against anything else went stale. The Jumu'ah row is the live case: its
+  // isPassed derives from the khutbah, which with a 12:00 khutbah and a 12:24
+  // Dhuhr left the row untrackable for 77 minutes after the khutbah began.
+  // A minute is finer than any boundary this UI distinguishes.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Reload when the displayed day's prayers change — the list rolls over at
   // local midnight, and stale checkmarks from yesterday would otherwise be
@@ -131,8 +156,8 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
 
         if (pairPrayer) {
           skip.add(pairName);
-          const displayPrayer = (jumuahEnabled && prayer.name === 'dhuhr')
-            ? { ...prayer, label: 'Jumuah' }
+          const displayPrayer = (jumuahEnabled && khutbahTime && prayer.name === 'dhuhr')
+            ? { ...prayer, label: 'Jumuah', time: khutbahTime }
             : prayer;
           const startFmt = formatTime(displayPrayer.time);
           const endFmt = formatTime(pairPrayer.time);
@@ -168,12 +193,8 @@ export const IslamicPrayerTable = React.memo(function IslamicPrayerTable({ praye
         }
       }
 
-      if (jumuahEnabled && prayer.name === 'dhuhr') {
-        const khutbahTimeStr = settings.jumuah.times[0].khutbah;
-        const [hh, mm] = khutbahTimeStr.split(':').map(Number);
-        const khutbahDate = new Date();
-        khutbahDate.setHours(hh, mm, 0, 0);
-        const jumuahPrayer: PrayerTime = { ...prayer, label: 'Jumuah', time: khutbahDate };
+      if (jumuahEnabled && khutbahTime && prayer.name === 'dhuhr') {
+        const jumuahPrayer: PrayerTime = { ...prayer, label: 'Jumuah', time: khutbahTime };
 
         rendered.push(
           <IslamicPrayerRow

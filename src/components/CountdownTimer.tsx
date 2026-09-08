@@ -58,33 +58,36 @@ export function CountdownTimer({ currentPrayer, currentPrayerTime, nextPrayer, n
     }
   }
 
-  // Elapsed time since current prayer started + progress through prayer window
-  const [elapsed, setElapsed] = useState({ h: 0, m: 0, s: 0 });
-  const [progress, setProgress] = useState(0); // 0 to 1 representing how far through the prayer window
+  // Elapsed time since the current prayer started, and progress through the
+  // prayer window. Both are *derived* from a ticking clock rather than held in
+  // their own state: they used never to be reset when their inputs went away
+  // (the effect early-returned), and isUrgent is read from `progress` during
+  // the same render while effects run after paint — so toggling "Show current
+  // prayer" off near the end of a window and back on after the prayer had
+  // changed painted one frame of the new prayer with the red urgent border and
+  // the ENDING SOON badge. Derived, that state cannot exist.
+  const showingCurrent = !!currentPrayer && !!currentPrayerTime && display.showCurrentPrayer;
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    if (!currentPrayer || !currentPrayerTime || !display.showCurrentPrayer) return;
-
-    const update = () => {
-      const now = new Date();
-      const diff = Math.max(0, Math.floor((now.getTime() - currentPrayerTime.getTime()) / 1000));
-      setElapsed({
-        h: Math.floor(diff / 3600),
-        m: Math.floor((diff % 3600) / 60),
-        s: diff % 60,
-      });
-
-      // Compute progress through prayer window (0 at start, 1 at end)
-      if (nextPrayerTime) {
-        const totalDuration = nextPrayerTime.getTime() - currentPrayerTime.getTime();
-        const elapsedDuration = now.getTime() - currentPrayerTime.getTime();
-        setProgress(totalDuration > 0 ? Math.min(1, Math.max(0, elapsedDuration / totalDuration)) : 0);
-      }
-    };
-
-    update();
-    const interval = setInterval(update, 1000);
+    if (!showingCurrent) return;
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [currentPrayer, currentPrayerTime, nextPrayerTime, display.showCurrentPrayer]);
+  }, [showingCurrent, currentPrayer, currentPrayerTime, nextPrayerTime]);
+
+  const elapsedSeconds = showingCurrent
+    ? Math.max(0, Math.floor((nowMs - currentPrayerTime!.getTime()) / 1000))
+    : 0;
+  const elapsed = {
+    h: Math.floor(elapsedSeconds / 3600),
+    m: Math.floor((elapsedSeconds % 3600) / 60),
+    s: elapsedSeconds % 60,
+  };
+  const windowMs = showingCurrent && nextPrayerTime
+    ? nextPrayerTime.getTime() - currentPrayerTime!.getTime()
+    : 0;
+  const progress = windowMs > 0
+    ? Math.min(1, Math.max(0, (nowMs - currentPrayerTime!.getTime()) / windowMs))
+    : 0;
 
   // Red urgency only kicks in past 60% of the prayer window
   const isUrgent = progress >= 0.6;
