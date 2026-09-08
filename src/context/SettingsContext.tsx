@@ -54,6 +54,7 @@ export const defaultTravelSettings: TravelSettings = {
   travelStartDate: null,
   autoConfirmed: false,
   promptDismissed: false,
+  offerSuppressed: false,
 };
 
 const defaultSettings: Settings = {

@@ -89,7 +89,7 @@ export function TravelProvider({ children }: { children: ReactNode }) {
       if (travel.enabled && travel.autoConfirmed) {
         isTraveling = true;
         isAutoDetected = true;
-      } else if (!dismissed && !travel.promptDismissed) {
+      } else if (!dismissed && !travel.promptDismissed && !travel.offerSuppressed) {
         // Offer it — qasr is never applied without an explicit yes.
         travelPending = true;
       }
@@ -175,18 +175,47 @@ export function TravelProvider({ children }: { children: ReactNode }) {
     );
     if (distance >= travel.distanceThresholdKm) return;
 
+    // Note what this deliberately does *not* touch: offerSuppressed. Turning
+    // Travel Mode off by hand used to write promptDismissed, and this effect —
+    // which fires on that very same settings change, with the user normally at
+    // home — cleared it again on the spot. The suppression was dead code
+    // unless you switched off while already more than the threshold from home,
+    // so a user who had deliberately disabled Travel Mode still got the offer
+    // (and the id-1300 notification) on their next trip.
     if (travel.autoConfirmed || travel.promptDismissed) {
       updateTravel({ autoConfirmed: false, travelStartDate: null, promptDismissed: false });
     }
     if (dismissed) setDismissed(false);
   }, [travel, location, updateTravel, dismissed]);
 
+  // Both of these change what "home" means, so the trip measured against the
+  // old one is over. They have to say so explicitly: the arrived-home reset
+  // early-returns on `!travel.homeBase` and only runs when the user is inside
+  // the threshold, so anything left set here could not be repaired later.
+  // Correcting a wrong home base while still away used to leave the offer
+  // suppressed until the user physically travelled to the old one, and
+  // changing home base mid-trip left travelStartDate from the previous
+  // journey — measuring maxTravelDays from the wrong trip.
   function setHomeBase(home: HomeBaseLocation) {
-    updateTravel({ homeBase: home });
+    updateTravel({
+      homeBase: home,
+      travelStartDate: null,
+      autoConfirmed: false,
+      promptDismissed: false,
+      offerSuppressed: false,
+    });
+    setDismissed(false);
   }
 
   function clearHomeBase() {
-    updateTravel({ homeBase: null, travelStartDate: null, autoConfirmed: false });
+    updateTravel({
+      homeBase: null,
+      travelStartDate: null,
+      autoConfirmed: false,
+      promptDismissed: false,
+      offerSuppressed: false,
+    });
+    setDismissed(false);
   }
 
   function setTravelOverride(override: TravelSettings['override']) {
@@ -212,8 +241,10 @@ export function TravelProvider({ children }: { children: ReactNode }) {
     if (newEnabled && !settings.travel.travelStartDate) {
       updates.travelStartDate = tripStartInstant();
     }
-    // Switching it off by hand also means "stop asking" until I'm home again.
-    if (!newEnabled) updates.promptDismissed = true;
+    // Switching it off by hand means "stop offering this" — a standing choice,
+    // not this trip's "not now", so it survives coming home. Switching it back
+    // on withdraws that.
+    updates.offerSuppressed = !newEnabled;
     updateTravel(updates);
   }
 
@@ -223,6 +254,7 @@ export function TravelProvider({ children }: { children: ReactNode }) {
       autoConfirmed: true,
       travelStartDate: tripStartInstant(),
       promptDismissed: false,
+      offerSuppressed: false,
     });
     setDismissed(false);
   }

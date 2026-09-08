@@ -116,11 +116,21 @@ export interface TravelSettings {
   travelStartDate: string | null;     // ISO date
   autoConfirmed: boolean;             // user confirmed current auto-detected trip
   /**
-   * "Not now" on the travel offer, or Travel Mode switched off by hand. Kept in
-   * settings rather than component state so the offer does not return on every
-   * launch; cleared automatically on arriving home.
+   * "Not now" on the travel offer, for *this* trip. Kept in settings rather
+   * than component state so the offer does not return on every launch;
+   * cleared automatically on arriving home, so the next journey is offered
+   * afresh.
    */
   promptDismissed?: boolean;
+  /**
+   * Travel Mode switched off by hand — "stop offering this at all", not "not
+   * on this trip". Separate from promptDismissed because arriving home has to
+   * clear that one and must not clear this one; `enabled: false` cannot stand
+   * in for it, since that is also the never-touched default and detection is
+   * deliberately not gated on it. Cleared by switching Travel Mode back on,
+   * and by changing or clearing the home base.
+   */
+  offerSuppressed?: boolean;
 }
 
 export interface TravelState {

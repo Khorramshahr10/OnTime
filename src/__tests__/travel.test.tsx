@@ -391,3 +391,169 @@ describe('User story: the app offers travel mode when I have gone far from home'
     expect(Math.abs(Date.now() - new Date(saved).getTime())).toBeLessThan(60_000);
   });
 });
+
+describe('User story: turning Travel Mode off by hand means stop asking', () => {
+  const TORONTO = { latitude: 43.6532, longitude: -79.3832, cityName: 'Toronto' };
+  const MECCA = { latitude: 21.43, longitude: 39.83, cityName: 'Mecca' };
+  const homeInMecca = (over: Record<string, unknown> = {}) => ({
+    travel: {
+      enabled: false,
+      homeBase: { coordinates: { latitude: 21.4225, longitude: 39.8262 }, cityName: 'Mecca' },
+      override: 'auto',
+      distanceThresholdKm: 88.7,
+      jamaDhuhrAsr: false,
+      jamaMaghribIsha: false,
+      maxTravelDays: 0,
+      travelStartDate: null,
+      autoConfirmed: false,
+      ...over,
+    },
+  });
+
+  /** Renders with a button per action, plus the state inspector. */
+  function renderWithActions(
+    saved: Record<string, unknown>,
+    where: { latitude: number; longitude: number; cityName: string },
+  ) {
+    function Actions() {
+      const { toggleTravelEnabled, dismissTravel, setHomeBase, clearHomeBase } = useTravel();
+      return (
+        <>
+          <button onClick={toggleTravelEnabled}>toggle</button>
+          <button onClick={dismissTravel}>not now</button>
+          <button onClick={clearHomeBase}>clear home</button>
+          <button
+            onClick={() =>
+              setHomeBase({
+                coordinates: { latitude: 51.5074, longitude: -0.1278 },
+                cityName: 'London',
+              })
+            }
+          >
+            new home
+          </button>
+        </>
+      );
+    }
+
+    vi.mocked(Preferences.get).mockImplementation(async ({ key }) => {
+      if (key === 'ontime_settings') return { value: JSON.stringify(saved) };
+      if (key === 'ontime_location') {
+        return {
+          value: JSON.stringify({
+            coordinates: { latitude: where.latitude, longitude: where.longitude },
+            cityName: where.cityName,
+          }),
+        };
+      }
+      return { value: null };
+    });
+    vi.mocked(Preferences.set).mockResolvedValue(undefined);
+
+    let captured: TravelState | null = null;
+    const view = render(
+      <ThemeProvider>
+        <SettingsProvider>
+          <LocationProvider>
+            <TravelProvider>
+              <TravelInspector onState={(st) => { captured = st; }} />
+              <Actions />
+            </TravelProvider>
+          </LocationProvider>
+        </SettingsProvider>
+      </ThemeProvider>,
+    );
+    return { view, getCaptured: () => captured };
+  }
+
+  /** The last persisted travel blob. */
+  const savedTravel = () => {
+    const writes = vi
+      .mocked(Preferences.set)
+      .mock.calls.map(([arg]) => arg)
+      .filter((arg) => arg.key === 'ontime_settings');
+    return JSON.parse(writes[writes.length - 1].value).travel;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps the offer suppressed after switching off at home, and offers again on switching back on', async () => {
+    // LQ-11: switching off wrote promptDismissed, and the arrived-home reset
+    // effect — which fires on that very same settings change — cleared it
+    // again, so the suppression only ever worked if you switched off while
+    // already more than 88.7km from home.
+    let r!: ReturnType<typeof renderWithActions>;
+    await act(async () => { r = renderWithActions(homeInMecca({ enabled: true }), MECCA); });
+
+    await act(async () => { fireEvent.click(r.view.getByText('toggle')); });
+    expect(savedTravel().offerSuppressed).toBe(true);
+    expect(savedTravel().enabled).toBe(false);
+
+    await act(async () => { fireEvent.click(r.view.getByText('toggle')); });
+    expect(savedTravel().offerSuppressed).toBe(false);
+    expect(savedTravel().enabled).toBe(true);
+  });
+
+  it('does not offer travel on the next trip after Travel Mode was switched off', async () => {
+    let r!: ReturnType<typeof renderWithActions>;
+    await act(async () => {
+      r = renderWithActions(homeInMecca({ offerSuppressed: true }), TORONTO);
+    });
+    expect(r.getCaptured()!.travelPending).toBe(false);
+  });
+
+  it('still offers again after a plain "Not now", once home', async () => {
+    // The other half: a per-trip dismissal must still be cleared on arrival,
+    // or the offer would never come back.
+    await act(async () => {
+      renderWithActions(homeInMecca({ promptDismissed: true }), MECCA);
+    });
+    expect(savedTravel().promptDismissed).toBe(false);
+    expect(savedTravel().offerSuppressed).toBeFalsy();
+  });
+
+  it('clearing the home base wipes the trip state that can no longer be repaired', async () => {
+    // LQ-12: the arrived-home reset early-returns on `!homeBase`, so anything
+    // left set here could never be cleared again — correcting a wrong home
+    // base while away meant the offer never returned.
+    let r!: ReturnType<typeof renderWithActions>;
+    await act(async () => {
+      r = renderWithActions(
+        homeInMecca({ enabled: true, autoConfirmed: true, promptDismissed: true, offerSuppressed: true, travelStartDate: '2026-01-01T00:00:00.000Z' }),
+        TORONTO,
+      );
+    });
+
+    await act(async () => { fireEvent.click(r.view.getByText('clear home')); });
+    const t = savedTravel();
+    expect(t.homeBase).toBe(null);
+    expect(t.autoConfirmed).toBe(false);
+    expect(t.travelStartDate).toBe(null);
+    expect(t.promptDismissed).toBe(false);
+    expect(t.offerSuppressed).toBe(false);
+  });
+
+  it('starts a fresh trip clock when the home base is changed mid-trip', async () => {
+    // LQ-12: setHomeBase cleared nothing, so maxTravelDays kept counting from
+    // the previous journey's start date.
+    let r!: ReturnType<typeof renderWithActions>;
+    await act(async () => {
+      r = renderWithActions(
+        homeInMecca({ enabled: true, autoConfirmed: true, travelStartDate: '2026-01-01T00:00:00.000Z' }),
+        TORONTO,
+      );
+    });
+
+    // London, not Toronto: the user stays away from the *new* home base too,
+    // so the arrived-home reset stays out of the way and the only thing that
+    // can clear the trip is setHomeBase itself.
+    await act(async () => { fireEvent.click(r.view.getByText('new home')); });
+    const t = savedTravel();
+    expect(t.homeBase.cityName).toBe('London');
+    expect(t.travelStartDate).toBe(null);
+    expect(t.autoConfirmed).toBe(false);
+    expect(t.promptDismissed).toBe(false);
+  });
+});
