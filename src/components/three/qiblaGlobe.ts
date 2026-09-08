@@ -147,8 +147,13 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
     const token = ++this.textureToken;
     buildEarthTexture({ ocean: C.card, land: C.muted, coast: C.muted, graticule: C.muted })
       .then((texture) => {
-        // A newer theme change may have overtaken this one.
-        if (token !== this.textureToken) {
+        // buildEarthTexture is genuinely async — it dynamically imports
+        // topojson-client and world-atlas on the first call — so the overlay
+        // can be closed before it lands. The staleness token only catches a
+        // *newer* request overtaking this one; without the disposed check a
+        // 4096x2048 texture (~32MB decoded) got assigned to a material nobody
+        // owns, once per open/close cycle, and nothing ever freed it.
+        if (this.isDisposed() || token !== this.textureToken) {
           texture.dispose();
           return;
         }
@@ -157,6 +162,8 @@ export class QiblaGlobe extends Base3D<QiblaGlobeData> {
         // The texture carries the colour now, so stop tinting it.
         this.shellMat.color.set('#ffffff');
         this.shellMat.needsUpdate = true;
+        // The loop may have parked while this was in flight.
+        this.wake();
       })
       .catch((err) => console.warn('map texture unavailable', err));
   }

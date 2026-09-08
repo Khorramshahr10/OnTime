@@ -197,6 +197,11 @@ export class SunDome extends Base3D<SunDomeData> {
     this.group.rotation.y = this.sunYaw;
   }
 
+  /** The halo pulses on its own clock, so this view can never park. */
+  protected animatesContinuously(): boolean {
+    return true;
+  }
+
   protected tick(t: number): void {
     this.halo.scale.setScalar(0.17 * (1 + Math.sin(t * 1.4) * 0.045));
     this.recedeFarSide();

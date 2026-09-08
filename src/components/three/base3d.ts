@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+/**
+ * How long the loop keeps drawing after something last changed the scene,
+ * before it parks. Long enough to cover OrbitControls' damping settle
+ * (dampingFactor 0.08) plus a comfortable margin.
+ */
+const SETTLE_MS = 900;
+
 export interface Palette {
   primary: string;
   text: string;
@@ -21,7 +28,12 @@ export interface Palette {
  *
  * The render loop is suspended whenever the view is off-screen or the app is
  * backgrounded — these run on phones, and a permanently spinning rAF on the
- * home screen is a battery leak.
+ * home screen is a battery leak. It also parks when nothing has changed for
+ * SETTLE_MS: gating only on visibility still meant a full rAF and a full
+ * render pass for as long as the Qibla overlay stayed open, on a scene that
+ * was completely static. Everything that can change what is on screen calls
+ * wake(); a view whose tick() animates on its own clock opts out of parking
+ * with animatesContinuously().
  */
 export abstract class Base3D<TData = unknown> {
   protected host: HTMLElement;
@@ -41,6 +53,9 @@ export abstract class Base3D<TData = unknown> {
   private adjusted = false;
 
   private raf = 0;
+  /** False once the loop has parked for want of anything to draw. */
+  private awake = true;
+  private idleTimer: ReturnType<typeof setTimeout> | 0 = 0;
   private ro?: ResizeObserver;
   private io?: IntersectionObserver;
   private start = 0;
@@ -50,7 +65,8 @@ export abstract class Base3D<TData = unknown> {
   private themeObserver?: MutationObserver;
   private onVisibility = () => {
     this.visible = !document.hidden;
-    this.syncLoop();
+    if (this.visible) this.wake();
+    else this.syncLoop();
   };
 
   constructor(host: HTMLElement, data: TData) {
@@ -89,8 +105,13 @@ export abstract class Base3D<TData = unknown> {
 
     this.homeCamera = this.camera.position.clone();
     this.homeTarget = this.controls.target.clone();
+    this.controls.addEventListener('start', () => this.wake());
     this.controls.addEventListener('start', () => this.markAdjusted(true));
+    // Fired for every camera move, including each frame of a damping settle
+    // and of autoRotate — so this one listener covers the whole of "the user
+    // is still interacting with it".
     this.controls.addEventListener('change', () => {
+      this.wake();
       if (!this.homeCamera) return;
       // Zoom fires 'change' without 'start' on a trackpad or wheel.
       if (Math.abs(this.camera.position.length() - this.homeCamera.length()) > 0.02) {
@@ -98,7 +119,10 @@ export abstract class Base3D<TData = unknown> {
       }
     });
 
-    this.ro = new ResizeObserver(() => this.resize());
+    this.ro = new ResizeObserver(() => {
+      this.resize();
+      this.wake();
+    });
     this.ro.observe(this.host);
     this.resize();
 
@@ -109,7 +133,10 @@ export abstract class Base3D<TData = unknown> {
         // since nothing would move it back on screen.
         const hasArea = entry.boundingClientRect.width > 0 && entry.boundingClientRect.height > 0;
         this.onScreen = entry.isIntersecting || !hasArea;
-        this.syncLoop();
+        // Coming back on screen has to draw at least one frame: whatever
+        // changed underneath while it was hidden has never been painted.
+        if (this.onScreen) this.wake();
+        else this.syncLoop();
       },
       { threshold: 0 }
     );
@@ -125,7 +152,46 @@ export abstract class Base3D<TData = unknown> {
       attributeFilter: ['class', 'style', 'data-theme'],
     });
 
+    this.wake();
+  }
+
+  /**
+   * Draw now, and keep drawing for a moment, then park again. Subclasses call
+   * this whenever async work (a texture, a geometry rebuild) lands after the
+   * loop may already have gone quiet.
+   */
+  protected wake(ms = SETTLE_MS): void {
+    if (this.disposed) return;
+    this.awake = true;
     this.syncLoop();
+    this.scheduleIdlePause(ms);
+  }
+
+  private scheduleIdlePause(ms: number): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = 0;
+    // A view that animates on its own clock never goes quiet, so don't churn
+    // a timer per frame trying to park it.
+    if (this.keepsRendering()) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = 0;
+      this.awake = false;
+      this.syncLoop();
+    }, ms);
+  }
+
+  /** True while something in the scene is still moving of its own accord. */
+  private keepsRendering(): boolean {
+    return this.animatesContinuously() || !!this.controls?.autoRotate;
+  }
+
+  /**
+   * Override to true in a view whose tick() animates on a clock rather than
+   * only in response to input or new data — SunDome's pulsing halo, say.
+   * Such a view never parks.
+   */
+  protected animatesContinuously(): boolean {
+    return false;
   }
 
   /** True once the user has dragged or zoomed away from the default view. */
@@ -147,6 +213,7 @@ export abstract class Base3D<TData = unknown> {
     this.controls.update();
     this.onReset();
     this.markAdjusted(false);
+    this.wake();
   }
 
   protected markAdjusted(value: boolean): void {
@@ -169,13 +236,17 @@ export abstract class Base3D<TData = unknown> {
   /** Push fresh app data into a mounted view. */
   update(data: TData): void {
     this.data = data;
-    if (!this.disposed && this.renderer) this.onData(data);
+    if (this.disposed || !this.renderer) return;
+    this.onData(data);
+    this.wake();
   }
 
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.raf = 0;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = 0;
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.themeObserver?.disconnect();
     this.ro?.disconnect();
@@ -250,7 +321,8 @@ export abstract class Base3D<TData = unknown> {
   }
 
   private syncLoop(): void {
-    const shouldRun = this.visible && this.onScreen && !this.disposed;
+    const shouldRun =
+      this.visible && this.onScreen && !this.disposed && (this.awake || this.keepsRendering());
     if (shouldRun && !this.raf) {
       this.raf = requestAnimationFrame(this.loop);
     } else if (!shouldRun && this.raf) {
@@ -268,6 +340,7 @@ export abstract class Base3D<TData = unknown> {
     this.applyColors();
     // Repaint immediately: the loop may be paused while off-screen.
     this.renderer.render(this.scene, this.camera);
+    this.wake();
   }
 
   private loop = (): void => {
