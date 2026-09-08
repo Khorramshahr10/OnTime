@@ -78,8 +78,15 @@ const SUN_HALO = 240;
 const MOON_HALO = 170;
 const SUN_COLOR = '#fff4d6';
 const MOON_COLOR = '#d9d4ca';
-/** Free, CORS-enabled equirectangular lunar surface texture (three.js examples). */
-const MOON_TEXTURE_URL = 'https://threejs.org/examples/textures/planets/moon_1024.jpg';
+/**
+ * Equirectangular lunar surface texture, bundled with the app.
+ *
+ * NASA imagery, via the three.js examples (MIT). It used to be hotlinked from
+ * threejs.org at runtime, which meant a network dependency on a third party's
+ * example CDN for a decorative texture — invisible to the privacy policy, and
+ * a flat white disc on first launch offline.
+ */
+const MOON_TEXTURE_URL = '/moon.jpg';
 /** Camera distance from the moon's centre when you tap to zoom into it. */
 const MOON_VIEW_DISTANCE = 150;
 const MOON_FLY_DURATION_MS = 1100;
@@ -433,6 +440,12 @@ export class HomeGlobe {
 
   mount(): void {
     this.homePov = { lat: this.data.latitude, lng: this.data.longitude, altitude: HOME_ALTITUDE };
+
+    // Start the webfont load before anything else. Canvas text is baked at draw
+    // time and the prayer labels are drawn during onGlobeReady, so loading in
+    // parallel with the base texture usually gets them the real face first time
+    // instead of needing the redraw this arranges.
+    this.redrawLabelsWhenFontsLoad();
 
     this.globe = new Globe(this.host, {
       rendererConfig: { alpha: true, antialias: true },
@@ -1198,15 +1211,30 @@ export class HomeGlobe {
     this.moonHalo.renderOrder = 4;
     scene.add(this.moon, this.moonHalo);
 
-    // Real lunar surface (free three.js example texture).
-    new THREE.TextureLoader().load(MOON_TEXTURE_URL, (tex) => {
-      if (this.disposed) return;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      this.moonSurfaceTexture = tex;
-      this.moonMaterial.uniforms.moonMap.value = tex;
-      this.moonMaterial.needsUpdate = true;
-      this.renderThenSettle();
-    });
+    // Real lunar surface, bundled with the app so it works offline.
+    new THREE.TextureLoader().load(
+      MOON_TEXTURE_URL,
+      (tex) => {
+        // Arriving after dispose() used to leak this texture: it was never
+        // assigned to moonSurfaceTexture, so dispose() had nothing to free.
+        if (this.disposed) {
+          tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this.moonSurfaceTexture = tex;
+        this.moonMaterial.uniforms.moonMap.value = tex;
+        this.moonMaterial.needsUpdate = true;
+        this.renderThenSettle();
+      },
+      undefined,
+      () => {
+        // Only reachable if the asset went missing from the bundle. The
+        // procedural placeholder stays in place, which reads as a plain white
+        // moon — worth a line in the console rather than a broken scene.
+        console.warn('OnTime: moon texture missing from the bundle; using the plain disc.');
+      },
+    );
 
     // Location marker
     this.pin = new THREE.Sprite(
@@ -1225,6 +1253,38 @@ export class HomeGlobe {
     this.groundGroup.renderOrder = 4;
     this.groundGroup.visible = false;
     scene.add(this.groundGroup);
+  }
+
+  /** The faces `prayerLabelSprite` draws with; keep the two in step. */
+  private static readonly LABEL_FONTS = ['500 30px Ubuntu', '600 30px Ubuntu'];
+
+  /**
+   * Redraw the prayer labels once the webfont they are drawn in has loaded.
+   *
+   * Canvas 2D bakes text at draw time, so a font arriving afterwards never
+   * repaints it: the pills keep the fallback face *and* the widths measured
+   * against the fallback metrics, for the life of the scene. Nothing else here
+   * awaits `document.fonts`, so without this the labels drawn during
+   * onGlobeReady stayed wrong until the next minute tick happened to rebuild
+   * them.
+   */
+  private redrawLabelsWhenFontsLoad(): void {
+    if (typeof document === 'undefined' || !('fonts' in document)) return;
+    const fonts = document.fonts;
+    if (HomeGlobe.LABEL_FONTS.every((spec) => fonts.check(spec))) return;
+
+    void Promise.all([
+      ...HomeGlobe.LABEL_FONTS.map((spec) => fonts.load(spec).catch(() => [])),
+      fonts.ready.catch(() => undefined),
+    ]).then(() => {
+      // Either resolution order is fine. Before onGlobeReady the labels have not
+      // been drawn yet and will pick the font up; after it, they were drawn with
+      // the fallback and need this redraw.
+      if (this.disposed || !this.ready) return;
+      const { latitude: sunLat, longitude: sunLon } = subSolarPoint(this.data.now);
+      this.rebuildPrayerLines(sunLat, sunLon);
+      this.renderThenSettle();
+    });
   }
 
   private applyData(): void {
