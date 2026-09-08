@@ -36,9 +36,10 @@ function useProbe() {
 
 async function mount() {
   const hook = renderHook(useProbe, { wrapper: AllProviders });
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(500);
-  });
+  // Twice: the first pass lets the settings and location contexts hydrate,
+  // and only then does the schedule debounce start counting.
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
   vi.mocked(scheduleNotifications).mockClear();
   return hook;
 }

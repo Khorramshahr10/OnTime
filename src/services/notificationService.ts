@@ -267,7 +267,12 @@ export async function scheduleNotifications(
 
   const hasPermission = await requestNotificationPermission();
   if (!hasPermission) {
+    // Clear the prayer range on the way out. Returning before this left
+    // whatever was already armed in place — from a run when permission was
+    // still granted, or from a previous install — so a user who has just
+    // revoked notifications could still be woken by the old schedule.
     console.warn('Notification permission not granted');
+    await cancelByCategory('prayer');
     return;
   }
 

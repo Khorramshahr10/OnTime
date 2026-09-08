@@ -180,9 +180,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           }
         }
         
-        // Deep merge to handle new settings fields
-        setSettings({
-          ...defaultSettings,
+        // Deep merge to handle new settings fields. Functional, and layered
+        // over whatever is already in state rather than over the raw defaults:
+        // a plain setSettings discards any update issued before the load
+        // resolves. Not reachable today — the only pre-load writers are
+        // TravelContext's guarded reset and user-paced onboarding — but any
+        // future auto-write on launch would inherit the loss.
+        setSettings((current) => ({
+          ...current,
           ...parsed,
           optionalPrayers: {
             ...defaultSettings.optionalPrayers,
@@ -222,7 +227,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           // round is what makes the choice sticky — a user who picked the list
           // keeps the list, while everyone who never chose gets the globe.
           homeView: parsed.homeView === 'list' ? 'list' : 'globe',
-        });
+        }));
       }
     } catch (error) {
       // Absent or unparseable data: the read itself succeeded, so there is no

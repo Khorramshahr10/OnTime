@@ -7,9 +7,17 @@ import { useSettings } from '../context/SettingsContext';
 import { useLocation } from '../context/LocationContext';
 
 export function useNotifications(enabled = true) {
-  const { settings } = useSettings();
-  const { location } = useLocation();
-  const masterEnabled = enabled && settings.notifications.enabled;
+  const { settings, isLoading: settingsLoading } = useSettings();
+  const { location, isLoading: locationLoading } = useLocation();
+  // Nothing is scheduled until both contexts have hydrated. App gates on
+  // onboarding but read neither loading flag, so if the onboarding read
+  // resolved first the 300ms debounce could build a whole schedule from the
+  // defaults and the Mecca seed coordinates. Transient and self-healing — the
+  // real settings then cancel it — but it wastes a full schedule/cancel cycle
+  // and can flash the OS permission dialog at a user who opted out.
+  const hydrated = !settingsLoading && !locationLoading;
+  const ready = enabled && hydrated;
+  const masterEnabled = ready && settings.notifications.enabled;
 
   // Schedule prayer notifications whenever location or the settings that
   // actually shape the schedule change.
@@ -63,10 +71,10 @@ export function useNotifications(enabled = true) {
   // Not gated on the master switch: with notifications disabled, reschedule is
   // exactly what cancels everything.
   useEffect(() => {
-    if (!enabled) return;
+    if (!ready) return;
     const timer = setTimeout(() => { reschedule(); }, 300);
     return () => clearTimeout(timer);
-  }, [reschedule, enabled]);
+  }, [reschedule, ready]);
 
   // Gated on the master switch: disabling cancels these via reschedule's
   // cancel-all, and re-enabling must bring them back — their own settings
@@ -91,7 +99,7 @@ export function useNotifications(enabled = true) {
   // rescheduling on every foreground, which would churn the whole schedule.
   const exactAlarmsMissing = useRef<boolean | null>(null);
   useEffect(() => {
-    if (!enabled || Capacitor.getPlatform() !== 'android') return;
+    if (!ready || Capacitor.getPlatform() !== 'android') return;
 
     let handle: { remove: () => void } | undefined;
     let cancelled = false;
@@ -123,7 +131,7 @@ export function useNotifications(enabled = true) {
       cancelled = true;
       handle?.remove();
     };
-  }, [enabled]);
+  }, [ready]);
 
   // Set up notification click listener
   useEffect(() => {

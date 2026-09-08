@@ -10,6 +10,8 @@ interface OnboardingScreenProps {
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [step, setStep] = useState<'welcome' | 'notifications' | 'location' | 'locating' | 'homeView'>('welcome');
+  /** Set when the OS prompt came back denied, so the next step can say so. */
+  const [notificationsDenied, setNotificationsDenied] = useState(false);
 
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -34,12 +36,19 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     try {
       const perm = await LocalNotifications.checkPermissions();
       if (perm.display === 'granted') {
+        setNotificationsDenied(false);
         setStep('location');
         return;
       }
-      await LocalNotifications.requestPermissions();
+      // The result used to be discarded, so a user who tapped "Don't allow"
+      // went on to the full prayer UI with every toggle looking enabled and
+      // no notification ever arriving. Onboarding still advances — refusing
+      // to let someone past this screen would be worse — but it says so.
+      const result = await LocalNotifications.requestPermissions();
+      setNotificationsDenied(result.display !== 'granted');
     } catch {
       // Continue even if notification permission fails
+      setNotificationsDenied(true);
     }
     setStep('location');
   }
@@ -157,6 +166,12 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             <p className="text-[var(--color-muted)] mb-8 leading-relaxed">
               Prayer times are calculated based on your location. Allow GPS access for accurate times wherever you are.
             </p>
+            {notificationsDenied && (
+              <p className="text-sm text-amber-600 mb-6 leading-relaxed" role="status">
+                Notifications are turned off, so OnTime cannot alert you at prayer times. You can
+                turn them on later in your phone's app settings.
+              </p>
+            )}
             <button
               onClick={handleLocationPermission}
               className="w-full py-3.5 bg-blue-500 text-white font-semibold rounded-lg text-lg mb-3"
