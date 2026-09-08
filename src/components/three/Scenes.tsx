@@ -68,16 +68,28 @@ function SceneHost<T>({ Scene, data, className, style, fallback = null, hideCont
     const host = hostRef.current;
     if (!host || !supported) return;
 
-    let view: SceneView<T>;
+    let built: SceneView<T> | null = null;
     try {
-      view = new Scene(host, dataRef.current);
-      view.mount();
+      built = new Scene(host, dataRef.current);
+      built.mount();
     } catch (err) {
       // Locked-down webviews can still refuse a context after probing clean.
+      // mount() installs two controls listeners, a ResizeObserver, an
+      // IntersectionObserver, a visibilitychange listener, a loading-manager
+      // subscription and three canvas pointer listeners — a throw part-way
+      // through leaves every one of them attached to a half-built scene that
+      // nothing else can reach, so tear down what did get installed before
+      // giving up. dispose() is written to tolerate a partial mount.
       console.warn('3D view unavailable', err);
+      try {
+        built?.dispose();
+      } catch (disposeErr) {
+        console.warn('3D view cleanup failed', disposeErr);
+      }
       return;
     }
 
+    const view = built;
     viewRef.current = view;
     onViewRef.current?.(view);
     return () => {

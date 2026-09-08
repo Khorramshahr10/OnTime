@@ -135,7 +135,7 @@ describe('HomeGlobe base sphere', () => {
     await nextFrame();
 
     expect(harness.globe.globeMesh.scale.x).toBeCloseTo(0.998, 5);
-    expect(harness.globe.cameraObj.far).toBe(30000);
+    expect(harness.globe.cameraObj.far).toBe(9000);
   });
 
   it('still scales it when onGlobeReady beats globe.gl adding the globe to the scene', async () => {
@@ -154,6 +154,6 @@ describe('HomeGlobe base sphere', () => {
     expect(harness.globe.globeMesh.scale.x).toBeCloseTo(0.998, 5);
     // The same deferred update resets camera.far to skyRadius * 2.5, which
     // quarters the depth precision the separation is sized against.
-    expect(harness.globe.cameraObj.far).toBe(30000);
+    expect(harness.globe.cameraObj.far).toBe(9000);
   });
 });

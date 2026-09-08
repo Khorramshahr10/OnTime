@@ -40,12 +40,29 @@ const HOME_ALTITUDE = 2.5; // default framing
 const FOCUS_ALTITUDE = 0.5; // "My location" fly-in
 const MIN_ALTITUDE = 0.06; // pinch floor, just above the atmosphere
 const MAX_DISTANCE = 3500;
-// Camera depth range. Far enough back for the starfield at 4000, and no
-// further: globe.gl's own default (skyRadius * 2.5 = 125000) spends most of
-// the depth buffer on empty space, leaving too little precision out here to
-// keep the base sphere and the tile shell apart.
+// Camera depth range, sized to the scene rather than to globe.gl's default
+// (skyRadius * 2.5 = 125000). The farthest thing here is the starfield at
+// STAR_RADIUS 4000 and the camera never backs off past
+// MAX_DISTANCE + GLOBE_RADIUS = 3600, so 9000 covers it with room to spare.
+//
+// This is scene hygiene, not a precision fix — a note worth leaving because
+// the obvious reading is wrong. For a 24-bit buffer the resolvable depth step
+// at distance u is (far-near)*u^2 / (far*near*2^24), and since far >> near
+// that reduces to u^2 / (near * 2^24): the far plane barely enters into it
+// (0.99997 vs 0.99989 of the same step at 30000 and at 9000). The lever is
+// `near`, and near is pinned at 1 by the pinch floor — minDistance is
+// GLOBE_RADIUS * 1.06 = 106, with pins and prayer-line labels sitting out at
+// radius ~101-105, so anything larger clips them at full zoom-in.
+//
+// The consequence is a known limitation: the step reaches ~0.73 units at
+// maxDistance, coarser than the 0.2-unit gap BASE_SPHERE_SCALE keeps between
+// the base sphere and the tile shell, so the Blue Marble can in principle
+// z-fight back through the tiles when pinched right out. The globe is a few
+// pixels across at that distance. Fixing it properly means a logarithmic
+// depth buffer, which is a rendering-pipeline change (the prayer lines are
+// Line2) that needs a device to verify.
 const CAMERA_NEAR = 1;
-const CAMERA_FAR = 30000;
+const CAMERA_FAR = 9000;
 
 // NASA Blue Marble (public domain), bundled so the globe always has a complete
 // earth under the streamed tiles — including on a cold start and offline.
@@ -66,6 +83,59 @@ const TILE_ENABLE_FALLBACK_MS = 2500;
 // Esri World Imagery. Also matched against loading-manager URLs to tell a
 // surface tile apart from the app's own textures.
 const TILE_HOST = 'server.arcgisonline.com';
+
+/**
+ * three-slippy-map-globe loads its surface tiles through a bare TextureLoader,
+ * so they report to THREE.DefaultLoadingManager — a single global slot with no
+ * way to inject a manager of our own.
+ *
+ * Saving and restoring that slot per instance corrupts the moment two globes
+ * overlap: the first to dispose restores the original and silently discards
+ * the second's live handler, and the second then restores the *first's*,
+ * leaving the global manager owned by a disposed scene and retaining its whole
+ * object graph. Only one <HomeGlobeView> exists today and StrictMode's
+ * double-invoke is sequential, so that is a trap rather than a live bug — but
+ * it is a cheap one to close.
+ *
+ * So hook the slot once, for as long as anyone is listening, and hand out
+ * subscriptions instead.
+ */
+interface TileLoadListener {
+  onTileProgress: (url: string, loaded: number, total: number) => void;
+  onAllLoaded: () => void;
+}
+
+const tileLoadListeners = new Set<TileLoadListener>();
+let prevManagerOnLoad: (() => void) | undefined;
+let prevManagerOnProgress: ((url: string, loaded: number, total: number) => void) | undefined;
+
+function addTileLoadListener(listener: TileLoadListener): void {
+  if (tileLoadListeners.size === 0) {
+    prevManagerOnLoad = THREE.DefaultLoadingManager.onLoad;
+    prevManagerOnProgress = THREE.DefaultLoadingManager.onProgress;
+    THREE.DefaultLoadingManager.onProgress = (url, loaded, total) => {
+      prevManagerOnProgress?.(url, loaded, total);
+      // Copy: a listener may dispose its globe from inside the callback.
+      for (const l of [...tileLoadListeners]) l.onTileProgress(url, loaded, total);
+    };
+    THREE.DefaultLoadingManager.onLoad = () => {
+      prevManagerOnLoad?.();
+      for (const l of [...tileLoadListeners]) l.onAllLoaded();
+    };
+  }
+  tileLoadListeners.add(listener);
+}
+
+function removeTileLoadListener(listener: TileLoadListener): void {
+  if (!tileLoadListeners.delete(listener)) return;
+  if (tileLoadListeners.size > 0) return;
+  THREE.DefaultLoadingManager.onLoad = prevManagerOnLoad as () => void;
+  THREE.DefaultLoadingManager.onProgress = prevManagerOnProgress as (
+    url: string, loaded: number, total: number,
+  ) => void;
+  prevManagerOnLoad = undefined;
+  prevManagerOnProgress = undefined;
+}
 // Longest the loader holds waiting for the first wave of tiles before
 // revealing whatever is there — offline, or a network too slow to wait on.
 const FIRST_TILES_MAX_WAIT_MS = 3000;
@@ -428,10 +498,26 @@ export class HomeGlobe {
   private ro?: ResizeObserver;
   private io?: IntersectionObserver;
   private onVisibility = () => this.syncLoop();
-  private prevManagerOnLoad?: () => void;
-  private prevManagerOnProgress?: (url: string, loaded: number, total: number) => void;
   /** Set once a surface tile image has come through the loading manager. */
   private sawTileTexture = false;
+  /** Surface tiles load through three's default manager (three-slippy-map-globe
+   *  uses a bare TextureLoader), and they arrive long after the camera stopped
+   *  moving. With the loop parking when idle, a tile landing after the park
+   *  would never be drawn — so render once more whenever loading goes quiet. */
+  private tileLoadListener: TileLoadListener = {
+    onTileProgress: (url) => {
+      if (typeof url === 'string' && url.includes(TILE_HOST)) this.sawTileTexture = true;
+    },
+    onAllLoaded: () => {
+      this.enableTilesOnceBaseIsUp();
+      // Hold the loader until surface tiles have actually landed, not merely
+      // until the base texture is on: enabling the tile engine is what starts
+      // the tile fetch, so revealing there uncovers a globe that then visibly
+      // fills in tile by tile. This drains once the first wave is in.
+      if (this.tilesEnabled && this.sawTileTexture) this.fireSurfaceReady();
+      this.renderThenSettle();
+    },
+  };
 
   constructor(host: HTMLElement, data: HomeGlobeData) {
     this.host = host;
@@ -523,60 +609,52 @@ export class HomeGlobe {
     this.io.observe(this.host);
 
     document.addEventListener('visibilitychange', this.onVisibility);
-    // Surface tiles load through three's default manager (three-slippy-map-globe
-    // uses a bare TextureLoader), and they arrive long after the camera stopped
-    // moving. With the loop now parking when idle, a tile landing after the park
-    // would never be drawn — so render once more whenever loading goes quiet.
-    this.prevManagerOnProgress = THREE.DefaultLoadingManager.onProgress;
-    THREE.DefaultLoadingManager.onProgress = (url, loaded, total) => {
-      this.prevManagerOnProgress?.(url, loaded, total);
-      if (typeof url === 'string' && url.includes(TILE_HOST)) this.sawTileTexture = true;
-    };
-    this.prevManagerOnLoad = THREE.DefaultLoadingManager.onLoad;
-    THREE.DefaultLoadingManager.onLoad = () => {
-      this.prevManagerOnLoad?.();
-      this.enableTilesOnceBaseIsUp();
-      // Hold the loader until surface tiles have actually landed, not merely
-      // until the base texture is on: enabling the tile engine is what starts
-      // the tile fetch, so revealing there uncovers a globe that then visibly
-      // fills in tile by tile. This drains once the first wave is in.
-      if (this.tilesEnabled && this.sawTileTexture) this.fireSurfaceReady();
-      this.renderThenSettle();
-    };
+    addTileLoadListener(this.tileLoadListener);
     this.syncLoop();
 
-    // Tap (not drag) detection for tap-to-zoom on the moon.
-    const canvas = this.globe.renderer().domElement;
-    canvas.addEventListener('pointerdown', (e) => {
-      this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() };
-      this.dragStart = { x: e.clientX, y: e.clientY, active: this.moonLocked };
-      if (this.moonLocked) this.wake();
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      if (!this.dragStart.active || !this.moonLocked) return;
-      this.wake();
-      const dx = e.clientX - this.dragStart.x;
-      const dy = e.clientY - this.dragStart.y;
-      this.dragStart.x = e.clientX;
-      this.dragStart.y = e.clientY;
-      const q = new THREE.Quaternion()
-        .setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.005)
-        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -dy * 0.005));
-      this.moonRot.premultiply(q);
-      this.applyMoonRotation();
-    });
-    canvas.addEventListener('pointerup', (e) => {
-      this.dragStart.active = false;
-      const dx = e.clientX - this.pointerDown.x;
-      const dy = e.clientY - this.pointerDown.y;
-      const dt = performance.now() - this.pointerDown.t;
-      if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD_PX || dt > TAP_TIME_THRESHOLD_MS) {
-        if (this.moonLocked) this.scheduleIdlePause(1500);
-        return;
-      }
-      this.handleTap(e);
-    });
+    // Tap (not drag) detection for tap-to-zoom on the moon. Named handlers,
+    // held on a field, so dispose() can actually take them off again — as
+    // anonymous closures nothing could remove them, and the canvas kept the
+    // whole HomeGlobe alive for as long as anything still referenced it.
+    this.canvas = this.globe.renderer().domElement;
+    this.canvas.addEventListener('pointerdown', this.onCanvasPointerDown);
+    this.canvas.addEventListener('pointermove', this.onCanvasPointerMove);
+    this.canvas.addEventListener('pointerup', this.onCanvasPointerUp);
   }
+
+  private canvas?: HTMLCanvasElement;
+
+  private onCanvasPointerDown = (e: PointerEvent) => {
+    this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+    this.dragStart = { x: e.clientX, y: e.clientY, active: this.moonLocked };
+    if (this.moonLocked) this.wake();
+  };
+
+  private onCanvasPointerMove = (e: PointerEvent) => {
+    if (!this.dragStart.active || !this.moonLocked) return;
+    this.wake();
+    const dx = e.clientX - this.dragStart.x;
+    const dy = e.clientY - this.dragStart.y;
+    this.dragStart.x = e.clientX;
+    this.dragStart.y = e.clientY;
+    const q = new THREE.Quaternion()
+      .setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.005)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -dy * 0.005));
+    this.moonRot.premultiply(q);
+    this.applyMoonRotation();
+  };
+
+  private onCanvasPointerUp = (e: PointerEvent) => {
+    this.dragStart.active = false;
+    const dx = e.clientX - this.pointerDown.x;
+    const dy = e.clientY - this.pointerDown.y;
+    const dt = performance.now() - this.pointerDown.t;
+    if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD_PX || dt > TAP_TIME_THRESHOLD_MS) {
+      if (this.moonLocked) this.scheduleIdlePause(1500);
+      return;
+    }
+    this.handleTap(e);
+  };
 
   update(data: HomeGlobeData): void {
     this.data = data;
@@ -814,6 +892,14 @@ export class HomeGlobe {
 
   /** Apply the drag rotation to the moon, keeping the lit side sun-facing. */
   private applyMoonRotation(): void {
+    // `moon` is only assigned in buildExtras(), which runs from onGlobeReady —
+    // but the instance is handed to React the moment mount() returns, and the
+    // "My location" / "Reset view" buttons sit above the loader and are
+    // tappable through the whole prelude. Without this guard both handlers
+    // threw before reaching pointOfView(), so the tap did nothing at all.
+    // Same idiom as focusOnMoon(). buildExtras() re-applies the rotation once
+    // the moon exists, so nothing is lost by skipping here.
+    if (!this.moon) return;
     this.moon.setRotationFromQuaternion(this.moonRot);
     this.moonMaterial.uniforms.sunDirection.value
       .copy(this.worldSunDir)
@@ -863,7 +949,7 @@ export class HomeGlobe {
     this.clearGroundLine();
     this.globe.controls().enabled = true;
     const cam = this.globe.camera() as THREE.PerspectiveCamera;
-    cam.near = 1;
+    cam.near = CAMERA_NEAR;
     cam.up.set(0, 1, 0); // undo the ground-view radial tilt before re-enabling orbit
     cam.updateProjectionMatrix();
     if (this.pin) this.pin.visible = true;
@@ -1038,10 +1124,11 @@ export class HomeGlobe {
     this.groundFlyAnim = null;
     if (this.idlePauseTimer) clearTimeout(this.idlePauseTimer);
     document.removeEventListener('visibilitychange', this.onVisibility);
-    THREE.DefaultLoadingManager.onLoad = this.prevManagerOnLoad as () => void;
-    THREE.DefaultLoadingManager.onProgress = this.prevManagerOnProgress as (
-      url: string, loaded: number, total: number,
-    ) => void;
+    removeTileLoadListener(this.tileLoadListener);
+    this.canvas?.removeEventListener('pointerdown', this.onCanvasPointerDown);
+    this.canvas?.removeEventListener('pointermove', this.onCanvasPointerMove);
+    this.canvas?.removeEventListener('pointerup', this.onCanvasPointerUp);
+    this.canvas = undefined;
     this.ro?.disconnect();
     this.io?.disconnect();
     this.globe?.pauseAnimation();
