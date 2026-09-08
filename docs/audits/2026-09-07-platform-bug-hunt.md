@@ -579,14 +579,99 @@ Batched so each step is independently shippable and testable.
 18. **MH-4 / GL-14** — bound the tile cache and delete non-current cache names on `activate`; wrap `cache.put` in `event.waitUntil`.
 19. **LQ-10** — apply coordinates immediately, then patch in the geocoded name; add an `AbortController` with a ~5 s timeout and a cancellation flag for the onboarding skip path.
 
-**Batch 6 — hygiene and latent traps.** GL-2, GL-6, GL-7, MH-3, MH-8, LQ-9, LQ-11, LQ-12, ST-3, ST-6, ST-7, ST-8, ST-9, ST-10, ST-14, NT-7, NT-11, NT-12, NT-13, NT-15, NT-17, NT-18, NT-19, PM-7, PM-9, PM-11, PM-13, GL-15, GL-16, DOC-2, PM-10 (delete `DateHeader.tsx`), and the currently-unreachable GL-10/GL-11/GL-12/GL-13 and LQ-13/LQ-14 — worth fixing before they become reachable.
+**Batch 6 — hygiene and latent traps.** ✅ **Complete** (2026-09-07, eleven
+commits from `252a1f6` to `ba47e6f`). GL-2, GL-6, GL-7, MH-3, MH-8, LQ-9,
+LQ-11, LQ-12, ST-3, ST-6, ST-7, ST-8, ST-9, ST-10, ST-14, NT-7, NT-11, NT-12,
+NT-13, NT-15, NT-16/ST-12/ST-13, NT-17, NT-19, PM-7, PM-9, PM-11, PM-13,
+GL-15, GL-16, PM-10 (`DateHeader.tsx` deleted), and the
+currently-unreachable GL-10/GL-11/GL-12 and LQ-13/LQ-14 all landed. Every fix
+was verified by reverting it in place and confirming exactly the intended test
+fails; the suite went 320 → 372 and lint held at 18 + 1.
+
+Four things did **not** land, and each for a stated reason:
+
+- **GL-13 — refuted as designed. See the note below; do not re-derive it.**
+- **NT-18** (channel importance and audio usage) — the owner's call, issue #18.
+- **NT-21** (Play-restricted permissions) — a declaration form, not code.
+- **NT-11's second half** — surfacing a notification denial *after* onboarding
+  and deep-linking to the system settings screen is new UI, not a fix. The
+  mechanical half (stop discarding `requestPermissions()`, cancel the prayer
+  range on denial, say so on the next onboarding step) shipped.
+
+**DOC-2** and **MH-2** needed nothing: `README.md:45` already reads "33,000+
+cities" against the 33,203 entries in `src/data/cities.ts`, and all three
+`await selectAthan(...)` call sites already go through `handleSelectAthan`,
+which has a try/catch and its own error state.
+
+### GL-13 is refuted — the fix does not do what the finding says
+
+The finding proposed dropping `CAMERA_FAR` from 30000 to 9000 for a "free 3.3×
+precision win". **The arithmetic does not support that**, and the same error
+appears in three places that should be read together: this finding, the
+comment `d6a9bc2` left on `CAMERA_FAR`, and the handoff note calling
+`ensureBaseSetup`'s camera-range reset "load-bearing".
+
+The depth step is `(far−near)·u² / (far·near·2²⁴)`. The finding's *numbers* are
+right (≈0.238 at u=2000, ≈0.73 at `MAX_DISTANCE`), but they were attributed to
+the wrong term. Since `far >> near`, `(far−near)/far` is 0.99997 at 30000 and
+0.99989 at 9000 — the expression reduces to `u² / (near · 2²⁴)`, and the far
+plane contributes 0.01% of the difference, not 3.3×.
+
+The lever is `near`, and `near` is pinned at 1 by the pinch floor:
+`minDistance` is `GLOBE_RADIUS * 1.06 = 106`, with pins and prayer-line labels
+at radius ~101–105, so anything larger clips them at full zoom-in. So the
+~0.73-unit step at `maxDistance` against the 0.2-unit `BASE_SPHERE_SCALE` gap
+**stands as a known limitation**. Fixing it properly means a logarithmic depth
+buffer — a rendering-pipeline change against `Line2` prayer lines that needs a
+device to verify — or widening the gap past 0.73, which would push the base
+sphere inside the engine's black back layer at `radius * 0.99`. Both are out of
+scope for a hygiene batch.
+
+`CAMERA_FAR` still moved to 9000, because it is the honest scene bound (the
+starfield is at 4000 and the camera never passes 3600) and it is free. The
+comment now says what it does and does not buy. The reset in `ensureBaseSetup`
+was left alone: not because it is load-bearing for precision — it is not — but
+because removing it is a change with no benefit that the existing test pins,
+and jsdom cannot render to check.
+
+### What batch 6 changed structurally, beyond the individual fixes
+
+- **`TravelSettings.offerSuppressed`** — a new optional persisted field.
+  `promptDismissed` conflated "not on this trip" (cleared on arriving home)
+  with "stop offering this at all" (must survive arriving home), which is why
+  LQ-11's suppression was dead code. Optional, so nothing needs migrating.
+- **`PrayerScheduleSettings`** — `scheduleNotifications` now takes a `Pick<>` of
+  the four settings it actually reads rather than the whole `Settings` object.
+  That is deliberate: it makes the compiler, not a comment, keep
+  `useNotifications`' dependency list honest (NT-17). Keep it narrow.
+- **`patches/@capacitor+local-notifications+8.0.0.patch`** — the third entry in
+  `patches/` and the first against a Capacitor plugin rather than a three.js
+  one. It staggers the post-reboot notification restore (NT-19).
+- **`useCountdown` / `PrayerCountdownPanel`** — the per-second countdown moved
+  out of `usePrayerTimes` so App stops re-rendering every second (MH-8).
+  `usePrayerTimes` now arms a boundary timeout with a five-second watchdog
+  behind it; boundary latency after a device resume is bounded at five seconds
+  rather than the old poll's one.
+- **`MAX_JUMUAH_TIMES`** — the Jumu'ah "+ Add Another" cap and the notification
+  id stride are one exported constant, so they cannot drift apart (NT-13).
+
+Two batch 6 changes are **structural rather than observable**, and belong on
+the on-device checklist (issue #19) rather than in the test suite:
+
+- **PM-13** — `progress`/`elapsed` are derived rather than stored, which makes
+  the stale-frame state unrepresentable. It ships without a test on purpose:
+  the symptom is a one-frame paint artifact, and React Testing Library flushes
+  effects inside `act()`, so a test written for it passes against the old code
+  too. A test that cannot fail is worse than none.
+- **MH-8 / NT-19** — the boundary watchdog and the reboot stagger are both
+  reasoned from platform behaviour, with no device to confirm them on.
 
 **Decision needed, not engineering:**
 - **iOS** (§4) — fix `Info.plist` (LQ-2), the compass permission flow (LQ-1, LQ-8) and the sound handling (NT-4, NT-2), or drop the iOS claim from `README.md:3` and remove `build:ios`. Shipping as-is is not an option; the app crashes on onboarding step 2 and the binary would be rejected at upload.
 - **PM-8** — which high-latitude rule to expose, and what the default should be. This is a fiqh decision, not a code one, but it currently affects most of the UK, northern Europe, Canada and Russia with no user recourse.
 - **NT-21** — confirm the Play Console declaration forms for `SCHEDULE_EXACT_ALARM` and `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` before the next submission.
 - **Esri World Imagery terms** for unkeyed use in a published app — already flagged in the v1.8.0 release notes and still unverified; now compounded by GL-1 sending ~1000 requests per cold start.
-- **The two stale `.worktrees/`** — `.worktrees/feature/hijri-date-header` holds an unmerged feature (PM-10). Land it or delete it deliberately.
+- **The two stale `.worktrees/`** — `.worktrees/feature/hijri-date-header` holds an unmerged feature (PM-10). Batch 6 deleted the orphaned `DateHeader.tsx` on `main`; the worktree itself is still yours to land or delete deliberately.
 
 
 ---
