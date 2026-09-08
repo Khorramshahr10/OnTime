@@ -102,7 +102,9 @@ interface SettingsContextType {
   updateTravel: (updates: Partial<TravelSettings>) => void;
   updateSurahKahf: (updates: Partial<SurahKahfSettings>) => void;
   updateDisplay: (updates: Partial<DisplaySettings>) => void;
-  updateAthan: (updates: Partial<AthanSettings>) => void;
+  updateAthan: (
+    updates: Partial<AthanSettings> | ((prev: AthanSettings) => Partial<AthanSettings>),
+  ) => void;
   updateDistanceUnit: (unit: 'miles' | 'km') => void;
   updateDesignStyle: (style: DesignStyle) => void;
   updateHomeView: (view: 'globe' | 'list') => void;
@@ -334,15 +336,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const updateAthan = useCallback((updates: Partial<AthanSettings>) => {
-    setSettings((prev) => ({
-      ...prev,
-      athan: {
-        ...prev.athan,
-        ...updates,
-      },
-    }));
-  }, []);
+  const updateAthan = useCallback(
+    (updates: Partial<AthanSettings> | ((prev: AthanSettings) => Partial<AthanSettings>)) => {
+      setSettings((prev) => ({
+        ...prev,
+        athan: {
+          ...prev.athan,
+          // The functional form matters for anything derived from the current
+          // athan list: building `[...settings.athan.downloadedAthans, file]`
+          // at the call site captures the array as it was when that callback
+          // was created, so two downloads finishing together each append to
+          // the same pre-first snapshot and one entry is lost.
+          ...(typeof updates === 'function' ? updates(prev.athan) : updates),
+        },
+      }));
+    },
+    [],
+  );
 
   const updateDistanceUnit = useCallback((unit: 'miles' | 'km') => {
     setSettings((prev) => ({ ...prev, distanceUnit: unit }));

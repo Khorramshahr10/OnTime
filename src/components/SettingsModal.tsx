@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type MutableRefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLocation } from '../context/LocationContext';
@@ -85,6 +85,8 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
   const [manualLat, setManualLat] = useState('');
   const [manualLng, setManualLng] = useState('');
   const [manualCity, setManualCity] = useState('');
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [athanDeleteError, setAthanDeleteError] = useState<string | null>(null);
 
   // Athan state
   const [catalog, setCatalog] = useState<AthanCatalogEntry[]>([]);
@@ -97,13 +99,21 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
   );
 
   // The modal mounts at app start while persisted settings are still loading,
-  // so the useState initialiser captures defaults — resync once the real
-  // values arrive (and whenever they change elsewhere).
+  // so the useState initialiser captures defaults — resync from the real
+  // values, but only on mount and on each open.
+  //
+  // This used to depend on selectedAthanId as well, which meant it also fired
+  // when the user picked a different *main* athan: turning the switch on is a
+  // local-only edit until a Fajr athan is actually chosen, so that resync
+  // recomputed it as false and the panel vanished from under the user
+  // mid-flow. Reading the current values through a ref keeps them out of the
+  // dependency list without going stale.
+  const athanIdsRef = useRef(settings.athan);
+  athanIdsRef.current = settings.athan;
   useEffect(() => {
-    setUseSeparateFajr(
-      settings.athan.selectedFajrAthanId !== null && settings.athan.selectedFajrAthanId !== settings.athan.selectedAthanId
-    );
-  }, [settings.athan.selectedFajrAthanId, settings.athan.selectedAthanId]);
+    const { selectedFajrAthanId, selectedAthanId } = athanIdsRef.current;
+    setUseSeparateFajr(selectedFajrAthanId !== null && selectedFajrAthanId !== selectedAthanId);
+  }, [isOpen]);
 
   // Stop preview on category change or modal close
   const stopPreview = useCallback(() => {
@@ -146,6 +156,29 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
   useEffect(() => {
     if (!isOpen) stopPreview();
   }, [isOpen, stopPreview]);
+
+  // The modal renders null when closed but stays mounted for the app's whole
+  // lifetime, and handleClose only ever reset `category` — so every other
+  // draft survived. Reopening Settings > Location landed straight back in the
+  // coordinates panel with the old text and a stale red GPS error still
+  // showing, as if the abandoned attempt were still in progress. Reset on the
+  // close itself rather than in handleClose, so dismissing by any route (the
+  // hardware back button, the parent closing it) is covered.
+  useEffect(() => {
+    if (isOpen) return;
+    setCategory('main');
+    setLocationMethod(null);
+    setGpsLoading(false);
+    setGpsError(null);
+    setManualLat('');
+    setManualLng('');
+    setManualCity('');
+    setManualError(null);
+    setCatalogError(null);
+    setAthanSelectError(null);
+    setAthanDeleteError(null);
+    setPreviewingId(null);
+  }, [isOpen]);
 
   // Listen for preview complete
   useEffect(() => {
@@ -192,19 +225,45 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
 
   if (!isOpen) return null;
 
-  const handleSaveManualLocation = () => {
+  /**
+   * Returns true if it saved. The caller collapses the panel on true only —
+   * it used to collapse unconditionally, so typing a latitude of 999, or
+   * "43,65" with a comma decimal separator (which parseFloat reads as 43),
+   * closed the panel with nothing saved and no word of complaint. The GPS path
+   * right above this one has always had an error state; this one had none.
+   */
+  const handleSaveManualLocation = (): boolean => {
     const lat = parseFloat(manualLat);
     const lng = parseFloat(manualLng);
 
-    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-      setManualLocation(
-        { latitude: lat, longitude: lng },
-        manualCity || 'Custom Location'
-      );
-      setManualLat('');
-      setManualLng('');
-      setManualCity('');
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      setManualError('Enter both a latitude and a longitude as numbers, using a dot for decimals.');
+      return false;
     }
+    if (lat < -90 || lat > 90) {
+      setManualError('Latitude has to be between -90 and 90.');
+      return false;
+    }
+    if (lng < -180 || lng > 180) {
+      setManualError('Longitude has to be between -180 and 180.');
+      return false;
+    }
+
+    const cityName = manualCity.trim() || 'Custom Location';
+    setManualLocation({ latitude: lat, longitude: lng }, cityName);
+    // The GPS and search paths both do this; this one never did, so a
+    // hand-entered place could never be reused or promoted to a travel home
+    // base.
+    addPreviousLocation({
+      coordinates: { latitude: lat, longitude: lng },
+      cityName,
+      savedAt: new Date().toISOString(),
+    });
+    setManualError(null);
+    setManualLat('');
+    setManualLng('');
+    setManualCity('');
+    return true;
   };
 
   const handleClose = () => {
@@ -321,7 +380,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
             <CategoryItem
               icon={<AboutIcon />}
               title="About"
-              summary="v1.0.0"
+              summary={`v${__APP_VERSION__}`}
               onClick={() => setCategory('about')}
             />
           </div>
@@ -455,10 +514,12 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                     className="flex-1 p-3 rounded-lg bg-[var(--color-background)] text-[var(--color-text)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   />
                 </div>
+                {manualError && (
+                  <p className="text-sm text-red-500" role="alert">{manualError}</p>
+                )}
                 <button
                   onClick={() => {
-                    handleSaveManualLocation();
-                    setLocationMethod(null);
+                    if (handleSaveManualLocation()) setLocationMethod(null);
                   }}
                   disabled={!manualLat || !manualLng}
                   className="w-full py-3 bg-[var(--color-primary)] text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1202,26 +1263,54 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
 
                     {/* Delete button */}
                     <button
+                      aria-label={`Delete ${athan.muezzinName}`}
                       onClick={async () => {
                         stopPreview();
-                        await deleteAthanFile(athan.filename).catch(() => {});
-                        const newDownloaded = settings.athan.downloadedAthans.filter(a => a.id !== athan.id);
-                        const updates: Partial<typeof settings.athan> = { downloadedAthans: newDownloaded };
-                        if (settings.athan.selectedAthanId === athan.id) {
-                          if (settings.athan.currentChannelId) {
-                            AthanPlugin.deleteChannel({ channelId: settings.athan.currentChannelId }).catch(() => {});
-                          }
-                          updates.selectedAthanId = null;
-                          updates.currentChannelId = null;
+                        setAthanDeleteError(null);
+                        try {
+                          await deleteAthanFile(athan.filename);
+                        } catch (err) {
+                          // Swallowing this while removing the settings entry
+                          // regardless left the mp3 on disk forever, with no
+                          // UI row that could ever remove it. Keep the row.
+                          console.error('Failed to delete athan file:', err);
+                          setAthanDeleteError(
+                            `${athan.muezzinName} could not be deleted from storage. Nothing was removed.`,
+                          );
+                          return;
                         }
-                        if (settings.athan.selectedFajrAthanId === athan.id) {
-                          if (settings.athan.currentFajrChannelId) {
-                            AthanPlugin.deleteChannel({ channelId: settings.athan.currentFajrChannelId }).catch(() => {});
-                          }
-                          updates.selectedFajrAthanId = null;
-                          updates.currentFajrChannelId = null;
+                        if (settings.athan.selectedAthanId === athan.id && settings.athan.currentChannelId) {
+                          AthanPlugin.deleteChannel({ channelId: settings.athan.currentChannelId }).catch(() => {});
                         }
-                        updateAthan(updates);
+                        if (settings.athan.selectedFajrAthanId === athan.id && settings.athan.currentFajrChannelId) {
+                          AthanPlugin.deleteChannel({ channelId: settings.athan.currentFajrChannelId }).catch(() => {});
+                        }
+                        updateAthan((prev) => {
+                          const updates: Partial<typeof prev> = {
+                            downloadedAthans: prev.downloadedAthans.filter((a) => a.id !== athan.id),
+                          };
+                          if (prev.selectedAthanId === athan.id) {
+                            updates.selectedAthanId = null;
+                            updates.currentChannelId = null;
+                          }
+                          if (prev.selectedFajrAthanId === athan.id) {
+                            updates.selectedFajrAthanId = null;
+                            updates.currentFajrChannelId = null;
+                          }
+                          return updates;
+                        });
+                        // The four selected/channel fields were the only thing
+                        // this cleared, so any prayer still pointing at
+                        // 'athan:<id>' kept a dead reference: its <select>
+                        // rendered blank while the stored value silently
+                        // degraded to whatever resolveChannelId fell back to.
+                        for (const [prayer, prayerSettings] of Object.entries(settings.notifications.prayers)) {
+                          if (prayerSettings.sound === `athan:${athan.id}`) {
+                            updatePrayerNotification(prayer as PrayerName, {
+                              sound: settings.notifications.defaultSound,
+                            });
+                          }
+                        }
                       }}
                       className="p-2 rounded-lg hover:bg-red-500/10 transition-colors flex-shrink-0"
                     >
@@ -1231,6 +1320,10 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
                     </button>
                   </div>
                 ))}
+
+                {athanDeleteError && (
+                  <p className="text-sm text-red-500" role="alert">{athanDeleteError}</p>
+                )}
 
                 {/* Separate Fajr toggle */}
                 <div className="mt-2">
@@ -1304,9 +1397,15 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
             setCatalogError={setCatalogError}
             downloadedAthans={settings.athan.downloadedAthans}
             onDownloaded={(athanFile) => {
-              updateAthan({
-                downloadedAthans: [...settings.athan.downloadedAthans, athanFile],
-              });
+              // Functional: two downloads finishing together both used to
+              // append to the render-captured array, so the second write
+              // clobbered the first and one mp3 stayed on disk with its
+              // "Downloaded" badge gone and no way to remove it.
+              updateAthan((prev) => ({
+                downloadedAthans: prev.downloadedAthans.some((a) => a.id === athanFile.id)
+                  ? prev.downloadedAthans
+                  : [...prev.downloadedAthans, athanFile],
+              }));
             }}
           />
         )}
@@ -1546,7 +1645,7 @@ export function SettingsModal({ isOpen, onClose, onBackRef }: SettingsModalProps
             <div className="p-6 rounded-lg bg-[var(--color-card)] text-center">
               <img src="/logo.png" alt="OnTime" className="w-20 h-20 mx-auto mb-4 rounded-lg" />
               <h4 className="text-xl font-semibold text-[var(--color-text)]">OnTime</h4>
-              <p className="text-[var(--color-muted)] mt-1">Version 1.0.0</p>
+              <p className="text-[var(--color-muted)] mt-1">Version {__APP_VERSION__}</p>
             </div>
             
             <div className="p-4 rounded-lg bg-[var(--color-card)]">

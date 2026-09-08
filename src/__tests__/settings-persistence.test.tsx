@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Preferences } from '@capacitor/preferences';
 import { render, act } from '@testing-library/react';
 import { SettingsProvider, useSettings } from '../context/SettingsContext';
@@ -194,5 +195,59 @@ describe('User story: My settings persist across app restarts', () => {
 
     // The read succeeded, so there is no intact profile left to protect.
     expect(Preferences.set).toHaveBeenCalled();
+  });
+});
+
+describe('Two athan downloads finishing together (ST-3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps both, rather than the second write clobbering the first', async () => {
+    vi.mocked(Preferences.get).mockResolvedValue({ value: null });
+
+    const apiRef: { current: ReturnType<typeof useSettings> | null } = { current: null };
+    function Api() {
+      const settings = useSettings();
+      useEffect(() => {
+        apiRef.current = settings;
+      });
+      return null;
+    }
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Api />
+        </SettingsProvider>,
+      );
+    });
+
+    const file = (id: string) => ({
+      id,
+      muezzinName: `Muezzin ${id}`,
+      title: `Athan ${id}`,
+      filename: `${id}.mp3`,
+      url: `https://example.test/${id}.mp3`,
+    });
+
+    // Both callbacks land in the same batch, which is exactly what two
+    // parallel downloads do — handleDownload only guards re-entry per URL, so
+    // two different athans really do run at once. Building the array outside
+    // the updater meant the second callback closed over the pre-first
+    // snapshot: the persisted blob came out as ['b'], a.mp3 stayed orphaned in
+    // external storage, its "Downloaded" badge disappeared, and the user
+    // downloaded it again.
+    await act(async () => {
+      apiRef.current!.updateAthan((prev) => ({ downloadedAthans: [...prev.downloadedAthans, file('a')] }));
+      apiRef.current!.updateAthan((prev) => ({ downloadedAthans: [...prev.downloadedAthans, file('b')] }));
+    });
+
+    const writes = vi
+      .mocked(Preferences.set)
+      .mock.calls.map(([arg]) => arg)
+      .filter((arg) => arg.key === 'ontime_settings');
+    const saved = JSON.parse(writes[writes.length - 1].value).athan.downloadedAthans;
+    expect(saved.map((a: { id: string }) => a.id).sort()).toEqual(['a', 'b']);
   });
 });
